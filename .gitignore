@@ -1,0 +1,50 @@
+.claude/
+.trae/
+
+# 环境变量文件 - 可能包含敏感信息
+.env
+.env.local
+.env.*.local
+
+# Node.js 相关
+node_modules/
+*/node_modules/
+
+# Python 相关
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# 日志和调试文件
+*.log
+logs/
+
+# IDE 和编辑器
+.vscode/
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# 操作系统相关
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# 测试覆盖率报告
+coverage/
+.nyc_output
+
+# 构建输出
+dist/
+build/
+out/
+
+# Pipeline 运行时产出
+changes/
+
+# 临时目录
+tmp/
+temp/
