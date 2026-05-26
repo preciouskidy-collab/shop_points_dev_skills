@@ -47,7 +47,6 @@ shop_points_dev_skills/
 │   ├── spring-boot-coding.md
 │   ├── review-checklist.md
 │   ├── test-authoring.md
-│   ├── checkpoints.md
 │   └── release-validation.md
 ├── runtime/                   # Agent Runtime（自动流转配置）
 │   ├── pipeline.md

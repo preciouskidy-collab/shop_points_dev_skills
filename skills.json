@@ -103,7 +103,7 @@
           "tests/test_report.md"
         ],
         "resources": [
-          "checkpoints",
+          "guardrail-build-standards",
           "playbook-test-authoring"
         ],
         "max_retries": 3
@@ -437,18 +437,6 @@
         "release"
       ],
       "entry": "playbooks/release-validation.md"
-    },
-    {
-      "id": "checkpoints",
-      "name": "验证命令",
-      "description": "编译、测试等验证命令的检查点定义",
-      "version": "0.1.0",
-      "category": "playbooks",
-      "tags": [
-        "verification",
-        "checkpoints"
-      ],
-      "entry": "playbooks/checkpoints.md"
     },
     {
       "id": "runtime-pipeline",

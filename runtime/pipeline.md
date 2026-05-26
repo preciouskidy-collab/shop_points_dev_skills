@@ -84,7 +84,7 @@ python3 skills_loader.py context --stage <stage_id> --project <project>
 | tech-design | knowledge-project-atlas, knowledge-component-graph-${project}, knowledge-data-layer-${project}, knowledge-message-bus-${project}, knowledge-rpc-contracts-${project}, knowledge-service-topology |
 | coding | guardrail-layering-contracts, guardrail-ai-coding-spec, playbook-spring-boot-coding |
 | review | guardrail-layering-contracts, guardrail-build-standards, guardrail-traceability-rules, guardrail-ai-coding-spec, playbook-review-checklist |
-| test | checkpoints, playbook-test-authoring |
+| test | guardrail-build-standards, playbook-test-authoring |
 | release | playbook-release-validation |
 
 修改资源映射只需编辑 `skills.json`，无需同步多个文件。
