@@ -10,11 +10,11 @@
 
 ## 注解规范
 
-- 日志：@Slf4j（使用 LOGGER，不使用 log）
+- 日志：@Slf4j
 - 控制器：@RestController + @RequestMapping
 - 服务：@Service
 - 数据层：@Mapper
-- 依赖注入：构造器注入（不使用 @Autowired）
+- 依赖注 入：构造器注入（不使用 @Autowired）
 
 ## 代码结构
 
@@ -32,8 +32,7 @@
 
 ## 数据库规范
 
-- 每张表必须包含：id(BIGINT), created_at(DATETIME), updated_at(DATETIME), is_deleted(TINYINT)
-- 逻辑删除：0-正常，1-删除
+- 每张表必须包含：id(BIGINT), ctime(DATETIME), mtime(DATETIME)
 - 禁止使用存储过程
 - SQL 不使用 SELECT *
 - 字符集：utf8mb4
@@ -44,4 +43,3 @@
 - 路径格式：/api/v1/{resource}
 - 统一响应结构：{code: int, message: string, data: T}
 - 成功：code = 0
-- 分页：使用 PageRequest/PageResult

@@ -71,10 +71,21 @@ class XxxServiceTest {
 - **仅对触碰模块显式启用**：`mvn test -pl <module> -DskipTests=false -Dtest=<TestClass>`。
 - 不要试图一次性修复所有存量测试债务。
 
+## Web 接口本地测试
+
+需要本地启动应用并调用真实接口验证时：
+
+1. **Install 改动模块**：`mvn install -pl <service-module> -am -DskipTests`
+2. **启动应用**：`mvn spring-boot:run -pl <start-module> -Dspring-boot.run.profiles=test`
+3. **发送请求**：用 `curl` 调接口，域名用 `local.ttb.test.ke.com`（非 localhost，CAS 认证需要）
+4. **Cookie + 参数**：交互式向 RD 获取
+
+> `spring-boot:run` 不直接用 sibling 模块的 `target/classes`，而是从 `~/.m2` 加载 jar。跳过 install 直接 run 会使用旧代码。
+
 ## 产出
 - `src/test/java/**/*Test.java`
 - `tests/test_report.md` 中记录执行命令和结果。
 
 ## 质量标准
-- 测试不能调用真实网络。
+- 测试不能调用生产/预发环境网络。
 - 测试名称描述行为，而不是实现细节（如 `create_insufficientBalance_throws` 而非 `test1`）。

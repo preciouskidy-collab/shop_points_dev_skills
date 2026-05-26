@@ -35,10 +35,10 @@
 
 ### 数据库设计
 
-- 每张表必须包含：id, created_at, updated_at, is_deleted
-- 字段命名使用 snake_case
-- 必须明确索引设计（主键索引、唯一索引、普通索引）
-- 遵循阿里巴巴 MySQL 规范
+- 每张表必须包含：id(BIGINT), ctime(DATETIME), mtime(DATETIME)
+- 禁止使用存储过程
+- SQL 不使用 SELECT *
+- 字符集：utf8mb4
 
 ### 技术选型
 

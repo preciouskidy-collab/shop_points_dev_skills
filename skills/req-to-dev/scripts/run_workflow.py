@@ -6,7 +6,8 @@ req-to-dev Pipeline 状态管理器
   init    — 初始化 pipeline，创建 changes 目录和状态文件
   status  — 查看当前 pipeline 进度
   advance — 推进到下一阶段（验证产出物）
-  approve — 人工审批通过
+  approve — 人工审批通过（进入编码）
+  reject  — 审批驳回（回退到 scope-eval 重新执行）
   fail    — 记录失败并触发恢复策略
 
 用法:
@@ -29,6 +30,11 @@ from pathlib import Path
 
 CHANGES_BASE = Path("changes")
 
+# skills.json 路径（相对于本脚本的位置）
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent.parent.parent
+SKILLS_JSON = _PROJECT_ROOT / "skills.json"
+
 
 def _detect_project(target_path: str) -> str:
     """根据 target_path 检测目标项目名，返回 'shop-points' 或 'shop-points-lottery'"""
@@ -38,120 +44,56 @@ def _detect_project(target_path: str) -> str:
     return "shop-points"
 
 
-def _resolve_resources(resources: list[str], project: str) -> list[str]:
-    """将 resource 模板解析为实际路径。
-    knowledge/component-graph → knowledge/<project>/component-graph
-    knowledge/project-atlas → knowledge/project-atlas（跨项目，不替换）
-    knowledge/service-topology → knowledge/service-topology（跨项目，不替换）
-    其他（guardrails/playbooks/checkpoints）原样返回
+def _load_stages_from_config() -> list[dict]:
+    """从 skills.json 加载 pipeline stages 定义（Single Source of Truth）"""
+    if not SKILLS_JSON.exists():
+        print(f"ERROR: skills.json 不存在: {SKILLS_JSON}", file=sys.stderr)
+        sys.exit(1)
+    with open(SKILLS_JSON, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    pipeline = config.get("pipeline")
+    if not pipeline or "stages" not in pipeline:
+        print("ERROR: skills.json 中缺少 pipeline.stages", file=sys.stderr)
+        sys.exit(1)
+    return pipeline["stages"]
+
+
+def _load_resources_registry() -> dict[str, str]:
+    """从 skills.json 加载资源注册表 {resource_id: entry_path}"""
+    with open(SKILLS_JSON, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    return {s["id"]: s["entry"] for s in config.get("skills", [])}
+
+
+# 模块级加载（启动时读取一次）
+STAGES = _load_stages_from_config()
+_RESOURCES_REGISTRY = _load_resources_registry()
+
+
+def _resolve_resource_id(resource_id: str, project: str) -> str | None:
+    """将 resource ID 解析为文件路径。
+
+    支持两种模式：
+    1. 直接 ID 匹配
+    2. ${project} 模板替换
     """
-    cross_project = {"knowledge/project-atlas", "knowledge/service-topology"}
+    if resource_id in _RESOURCES_REGISTRY:
+        return _RESOURCES_REGISTRY[resource_id]
+    if "${project}" in resource_id:
+        resolved_id = resource_id.replace("${project}", project)
+        if resolved_id in _RESOURCES_REGISTRY:
+            return _RESOURCES_REGISTRY[resolved_id]
+    return None
+
+
+def _resolve_resources(resources: list[str], project: str) -> list[str]:
+    """将 resource ID 列表解析为文件路径列表"""
     result = []
-    for r in resources:
-        if r in cross_project:
-            result.append(r)
-        elif r.startswith("knowledge/"):
-            name = r[len("knowledge/"):]
-            result.append(f"knowledge/{project}/{name}")
-        else:
-            result.append(r)
+    for rid in resources:
+        path = _resolve_resource_id(rid, project)
+        if path:
+            result.append(path)
     return result
-
-
-# 阶段定义：id, 是否阻塞, 产出物（相对于 change 目录）, 每阶段加载的规范（模板）
-# knowledge/* 中的 component-graph/data-layer/message-bus/rpc-contracts 会在运行时
-# 根据目标项目替换为 knowledge/shop-points/* 或 knowledge/shop-points-lottery/*
-STAGES = [
-    {
-        "id": "fetch-prd",
-        "name": "PRD 拉取",
-        "blocking": False,
-        "artifacts": ["request/prd.md"],
-        "resources": [],
-        "max_retries": 3,
-    },
-    {
-        "id": "break-down",
-        "name": "需求拆解",
-        "blocking": False,
-        "artifacts": ["request/spec.md", "request/tasks.md"],
-        "resources": ["knowledge/project-atlas"],
-        "max_retries": 0,
-    },
-    {
-        "id": "scope-eval",
-        "name": "范围评估",
-        "blocking": False,
-        "artifacts": ["impact/impact.md"],
-        "resources": ["knowledge/component-graph", "knowledge/data-layer"],
-        "max_retries": 0,
-    },
-    {
-        "id": "plan-approve",
-        "name": "人工审批",
-        "blocking": True,
-        "artifacts": [],
-        "resources": [],
-        "max_retries": 0,
-    },
-    {
-        "id": "tech-design",
-        "name": "技术方案",
-        "blocking": False,
-        "artifacts": ["tech-design/tech-design.md"],
-        "resources": [
-            "knowledge/project-atlas",
-            "knowledge/component-graph",
-            "knowledge/data-layer",
-            "knowledge/message-bus",
-            "knowledge/rpc-contracts",
-            "knowledge/service-topology",
-        ],
-        "max_retries": 0,
-    },
-    {
-        "id": "coding",
-        "name": "编码",
-        "blocking": False,
-        "artifacts": [],  # 代码 diff，无固定文件名
-        "resources": [
-            "guardrails/layering-contracts",
-            "guardrails/ai-coding-spec",
-            "playbooks/spring-boot-coding",
-        ],
-        "max_retries": 3,
-    },
-    {
-        "id": "review",
-        "name": "审查",
-        "blocking": False,
-        "artifacts": ["review/code_review_v1.md"],
-        "resources": [
-            "guardrails/layering-contracts",
-            "guardrails/build-standards",
-            "guardrails/traceability-rules",
-            "guardrails/ai-coding-spec",
-            "playbooks/review-checklist",
-        ],
-        "max_retries": 2,
-    },
-    {
-        "id": "test",
-        "name": "测试验证",
-        "blocking": False,
-        "artifacts": ["tests/test_report.md"],
-        "resources": ["checkpoints", "playbooks/test-authoring"],
-        "max_retries": 3,
-    },
-    {
-        "id": "release",
-        "name": "发布验证",
-        "blocking": False,
-        "artifacts": ["deploy/verify.md"],
-        "resources": ["playbooks/release-validation"],
-        "max_retries": 0,
-    },
-]
 
 
 def _find_change_dir(name: str) -> Path | None:
@@ -276,7 +218,7 @@ def cmd_init(args):
     _print_stage_header(STAGES[0], 0)
     print(f"  状态: running")
     project = _detect_project(args.target)
-    resolved = _resolve_resources(STAGES[0]["resources"], project)
+    resolved = _resolve_resources(STAGES[0].get("resources", []), project)
     if resolved:
         print(f"  加载规范: {', '.join(resolved)}")
     print(f"  产出物: {', '.join(STAGES[0]['artifacts']) or '(无固定文件)'}")
@@ -319,7 +261,7 @@ def cmd_status(args):
     stage_def = STAGES[state["current_stage"]]
     print(f"当前阶段: {current['name']} ({current['id']})")
     print(f"  状态: {current['status']}")
-    if stage_def["resources"]:
+    if stage_def.get("resources"):
         project = state.get("project", "shop-points")
         resolved = _resolve_resources(stage_def["resources"], project)
         print(f"  需加载: {', '.join(resolved)}")
@@ -433,7 +375,7 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
     if next_stage["blocking"]:
         _log(change_dir, f'BLOCKING {next_stage["id"]} — 等待人工审批')
     else:
-        resolved = _resolve_resources(next_def["resources"], project)
+        resolved = _resolve_resources(next_def.get("resources", []), project)
         loaded = f" (loaded: {', '.join(resolved)})" if resolved else ""
         _log(change_dir, f'STAGE {next_stage["id"]} → running{loaded}')
 
@@ -446,17 +388,20 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
         print("BLOCKING: 需要人工审批")
         print()
         print(">>> 请向用户展示以下内容并请求审批：")
-        print("    - request/spec.md  需求规格")
-        print("    - impact/impact.md 影响范围（含 Won't Do）")
-        print(f">>> 审批通过后运行: python3 {sys.argv[0]} approve --name {name}")
+        print("    - request/spec.md        需求规格")
+        print("    - impact/impact.md       影响范围（含 Won't Do）")
+        print("    - tech-design/tech-design.md  技术方案")
+        print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
+        print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
     else:
         print(f"  状态: running")
-        if next_def["resources"]:
+        if next_def.get("resources"):
             resolved = _resolve_resources(next_def["resources"], project)
             print(f"  加载规范: {', '.join(resolved)}")
         print(f"  产出物: {', '.join(next_def['artifacts']) or '(无固定文件)'}")
         print()
         print(f">>> AGENT: 执行阶段 {next_stage['id']}")
+        print(f">>> 资源加载: python3 {_PROJECT_ROOT}/skills_loader.py context --stage {next_stage['id']} --project {project}")
         print(f">>> 完成后运行: python3 {sys.argv[0]} advance --name {name}")
 
 
@@ -485,6 +430,58 @@ def cmd_approve(args):
     # 推进到下一阶段
     print()
     _advance_to_next(change_dir, state, idx, args.name)
+
+
+def cmd_reject(args):
+    """审批不通过，回退到 scope-eval 重新执行"""
+    change_dir = _find_change_dir(args.name)
+    if not change_dir:
+        print(f"ERROR: 找不到 change 目录: *-{args.name}", file=sys.stderr)
+        sys.exit(1)
+
+    state = _load_state(change_dir)
+    idx = state["current_stage"]
+    current = state["stages"][idx]
+
+    if not current["blocking"]:
+        print(f"ERROR: 当前阶段 {current['id']} 不是阻塞阶段，无法驳回", file=sys.stderr)
+        sys.exit(1)
+
+    # 找到 scope-eval 阶段的索引
+    scope_eval_idx = None
+    for i, s in enumerate(state["stages"]):
+        if s["id"] == "scope-eval":
+            scope_eval_idx = i
+            break
+
+    if scope_eval_idx is None:
+        print("ERROR: 找不到 scope-eval 阶段", file=sys.stderr)
+        sys.exit(1)
+
+    # 重置 scope-eval 和 tech-design 为 pending
+    feedback_stages = []
+    for i in range(scope_eval_idx, idx + 1):
+        stage = state["stages"][i]
+        stage["status"] = "pending"
+        stage["started_at"] = None
+        stage["completed_at"] = None
+        stage["retry_count"] = 0
+        stage["fail_reason"] = None
+        feedback_stages.append(stage["id"])
+
+    # 从 scope-eval 重新开始
+    state["stages"][scope_eval_idx]["status"] = "running"
+    state["stages"][scope_eval_idx]["started_at"] = datetime.now().isoformat()
+    state["current_stage"] = scope_eval_idx
+
+    _save_state(change_dir, state)
+    _log(change_dir, f'REJECTED plan-approve: {args.reason} → 回退到 scope-eval 重新执行')
+
+    print(f"🔄 审批驳回: {args.reason}")
+    print(f"   回退阶段: {' → '.join(feedback_stages)}")
+    print()
+    print(">>> AGENT: 根据 feedback 重新执行 scope-eval → tech-design")
+    print(f">>> 完成后运行: python3 {sys.argv[0]} advance --name {args.name}")
 
 
 def cmd_log(args):
@@ -585,6 +582,11 @@ def main():
     p_approve = subparsers.add_parser("approve", help="人工审批通过")
     p_approve.add_argument("--name", required=True, help="需求名称")
 
+    # reject
+    p_reject = subparsers.add_parser("reject", help="审批驳回，回退到 scope-eval 重新执行")
+    p_reject.add_argument("--name", required=True, help="需求名称")
+    p_reject.add_argument("--reason", required=True, help="驳回原因/修改意见")
+
     # fail
     p_fail = subparsers.add_parser("fail", help="记录失败")
     p_fail.add_argument("--name", required=True, help="需求名称")
@@ -607,6 +609,7 @@ def main():
         "status": cmd_status,
         "advance": cmd_advance,
         "approve": cmd_approve,
+        "reject": cmd_reject,
         "fail": cmd_fail,
         "log": cmd_log,
     }

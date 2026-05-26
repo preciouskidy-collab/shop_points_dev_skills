@@ -40,14 +40,14 @@ commands: []
 
 - 记录事实、决策和证据，不写空泛口号。
 - 旧评审版本不删除；新一轮使用 `v2`、`v3`。
-- Wiki 只记录长期系统事实；单次需求细节留在 Changes。
-- Rules 只记录稳定约束；临时例外写到 Change。
+-  knowledge 只记录长期系统事实；单次需求细节留在 Changes。
+-  guardrails 只记录稳定约束；临时例外写到 Change。
 - 用户显式做出的策略取舍，需要写清楚，防止后续 AI Agent 误改。
 
 ## 命名规范
 
 ```
-skills/harness/changes/YYYYMMDD-<type>-<short-name>/
+changes/YYYYMMDD-<type>-<short-name>/
 ```
 
 类型：`feature` / `fix` / `refactor` / `docs` / `config`

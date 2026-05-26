@@ -28,7 +28,7 @@ commands: []
 3. 找出行为变化点和兼容性风险。
 4. 为每个风险绑定验证方法（编译/测试/API验证/人工确认）。
 5. 明确列出"不会做什么"，防止自行扩大范围。
-6. 判断是否需要更新 Wiki 或 Rules。
+6. 判断是否需要更新 knowledge 或 guardrails。
 
 ## 产出
 - `impact/impact.md`

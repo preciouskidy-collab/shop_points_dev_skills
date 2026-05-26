@@ -1,33 +1,154 @@
 {
   "metadata": {
-    "version": "0.2.0",
+    "version": "0.3.0",
     "name": "Shop Points 后端 Skill 工具集",
     "description": "Shop Points 研发团队后端 AI 辅助技能工具集"
+  },
+  "pipeline": {
+    "stages": [
+      {
+        "id": "fetch-prd",
+        "name": "PRD 拉取",
+        "blocking": false,
+        "artifacts": [
+          "request/prd.md"
+        ],
+        "resources": [],
+        "max_retries": 3
+      },
+      {
+        "id": "break-down",
+        "name": "需求拆解",
+        "blocking": false,
+        "artifacts": [
+          "request/spec.md",
+          "request/tasks.md"
+        ],
+        "resources": [
+          "knowledge-project-atlas"
+        ],
+        "max_retries": 0
+      },
+      {
+        "id": "scope-eval",
+        "name": "范围评估",
+        "blocking": false,
+        "artifacts": [
+          "impact/impact.md"
+        ],
+        "resources": [
+          "knowledge-component-graph-${project}",
+          "knowledge-data-layer-${project}"
+        ],
+        "max_retries": 0
+      },
+      {
+        "id": "tech-design",
+        "name": "技术方案",
+        "blocking": false,
+        "artifacts": [
+          "tech-design/tech-design.md"
+        ],
+        "resources": [
+          "knowledge-project-atlas",
+          "knowledge-component-graph-${project}",
+          "knowledge-data-layer-${project}",
+          "knowledge-message-bus-${project}",
+          "knowledge-rpc-contracts-${project}",
+          "knowledge-service-topology"
+        ],
+        "max_retries": 0
+      },
+      {
+        "id": "plan-approve",
+        "name": "人工审批",
+        "blocking": true,
+        "artifacts": [],
+        "resources": [],
+        "max_retries": 0
+      },
+      {
+        "id": "coding",
+        "name": "编码",
+        "blocking": false,
+        "artifacts": [],
+        "resources": [
+          "guardrail-layering-contracts",
+          "guardrail-ai-coding-spec",
+          "playbook-spring-boot-coding"
+        ],
+        "max_retries": 3
+      },
+      {
+        "id": "review",
+        "name": "审查",
+        "blocking": false,
+        "artifacts": [
+          "review/code_review_v1.md"
+        ],
+        "resources": [
+          "guardrail-layering-contracts",
+          "guardrail-build-standards",
+          "guardrail-traceability-rules",
+          "guardrail-ai-coding-spec",
+          "playbook-review-checklist"
+        ],
+        "max_retries": 2
+      },
+      {
+        "id": "test",
+        "name": "测试验证",
+        "blocking": false,
+        "artifacts": [
+          "tests/test_report.md"
+        ],
+        "resources": [
+          "checkpoints",
+          "playbook-test-authoring"
+        ],
+        "max_retries": 3
+      },
+      {
+        "id": "release",
+        "name": "发布验证",
+        "blocking": false,
+        "artifacts": [
+          "deploy/verify.md"
+        ],
+        "resources": [
+          "playbook-release-validation"
+        ],
+        "max_retries": 0
+      }
+    ]
   },
   "skills": [
     {
       "id": "skill-creator",
       "name": "Skill 创建器",
-      "description": "创建和验证新 skill 的元工具，用于初始化 skill 目录结构、生成 SKILL.md 模板、验证 skill 格式",
-      "version": "0.1.0",
+      "description": "当需要创建新的 skill、验证 skill 格式或更新 skill 注册时触发",
+      "version": "0.2.0",
       "category": "common",
-      "tags": ["meta", "skill-creation", "scaffold"],
-      "entry": "common/skill-creator/scripts",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "meta",
+        "skill-creation",
+        "scaffold"
+      ],
+      "entry": "skills/common/skill-creator/SKILL.md"
     },
     {
       "id": "req-to-dev",
       "name": "需求到开发",
       "description": "从飞书 PRD 到需求分析、技术方案、编码、审查、测试、发布的端到端工作流",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "req-to-dev",
-      "tags": ["workflow", "orchestration", "backend", "feishu"],
-      "entry": "req-to-dev/scripts",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "workflow",
+        "orchestration",
+        "backend",
+        "feishu"
+      ],
+      "entry": "skills/req-to-dev/scripts"
     },
     {
       "id": "feishu-doc-fetcher",
@@ -35,35 +156,14 @@
       "description": "直连飞书开放平台 API 从飞书 URL 获取文档内容，转换为 Markdown 并下载图片到本地",
       "version": "0.3.0",
       "category": "req-to-dev",
-      "tags": ["feishu", "document", "api", "markdown", "prd"],
-      "entry": "req-to-dev/sub_skills/feishu-doc-fetcher/scripts",
-      "commands": [],
-      "references": [],
-      "config": {}
-    },
-    {
-      "id": "tech-design-generator",
-      "name": "技术方案生成器",
-      "description": "基于 PRD 文档内容，生成结构化的后端技术设计文档",
-      "version": "0.1.0",
-      "category": "req-to-dev",
-      "tags": ["tech-design", "architecture", "backend", "spring-boot"],
-      "entry": "req-to-dev/sub_skills/tech-design-generator/scripts",
-      "commands": [],
-      "references": [],
-      "config": {}
-    },
-    {
-      "id": "backend-code-developer",
-      "name": "后端代码开发器",
-      "description": "基于技术设计文档，按 KeBoot 规范生成 Java/Spring Boot 代码",
-      "version": "0.1.0",
-      "category": "req-to-dev",
-      "tags": ["code-generation", "java", "spring-boot", "keboot"],
-      "entry": "req-to-dev/sub_skills/backend-code-developer/scripts",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "feishu",
+        "document",
+        "api",
+        "markdown",
+        "prd"
+      ],
+      "entry": "skills/req-to-dev/sub_skills/feishu-doc-fetcher/scripts"
     },
     {
       "id": "guardrail-layering-contracts",
@@ -71,11 +171,12 @@
       "description": "修改 Java 代码结构、添加新类或调整 Maven 模块依赖时必须加载的分层守则",
       "version": "0.1.0",
       "category": "guardrails",
-      "tags": ["architecture", "layering", "maven"],
-      "entry": "guardrails/layering-contracts.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "architecture",
+        "layering",
+        "maven"
+      ],
+      "entry": "guardrails/layering-contracts.md"
     },
     {
       "id": "guardrail-build-standards",
@@ -83,11 +184,12 @@
       "description": "代码变更提交前必须加载，定义本地编译验证命令和通过标准",
       "version": "0.1.0",
       "category": "guardrails",
-      "tags": ["build", "verification", "maven"],
-      "entry": "guardrails/build-standards.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "build",
+        "verification",
+        "maven"
+      ],
+      "entry": "guardrails/build-standards.md"
     },
     {
       "id": "guardrail-traceability-rules",
@@ -95,11 +197,12 @@
       "description": "创建变更文档之前加载，定义何时必须创建 Change 记录及其必填产物",
       "version": "0.1.0",
       "category": "guardrails",
-      "tags": ["documentation", "traceability", "change-management"],
-      "entry": "guardrails/traceability-rules.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "documentation",
+        "traceability",
+        "change-management"
+      ],
+      "entry": "guardrails/traceability-rules.md"
     },
     {
       "id": "guardrail-ai-coding-spec",
@@ -107,11 +210,13 @@
       "description": "AI 生成 Java/Spring Boot 代码时必须遵守的运行守则和业务红线",
       "version": "0.1.0",
       "category": "guardrails",
-      "tags": ["ai-coding", "java", "spring-boot", "business-constraints"],
-      "entry": "guardrails/ai-coding-spec.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "ai-coding",
+        "java",
+        "spring-boot",
+        "business-constraints"
+      ],
+      "entry": "guardrails/ai-coding-spec.md"
     },
     {
       "id": "knowledge-project-atlas",
@@ -119,11 +224,12 @@
       "description": "需要了解 shop-points 和 shop-points-lottery 的整体架构时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["system", "overview", "architecture"],
-      "entry": "knowledge/project-atlas.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "system",
+        "overview",
+        "architecture"
+      ],
+      "entry": "knowledge/project-atlas.md"
     },
     {
       "id": "knowledge-component-graph-shop-points",
@@ -131,11 +237,13 @@
       "description": "需要了解 shop-points 的 Maven 模块布局、包结构和依赖链时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points", "module", "maven", "structure"],
-      "entry": "knowledge/shop-points/component-graph.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points",
+        "module",
+        "maven",
+        "structure"
+      ],
+      "entry": "knowledge/shop-points/component-graph.md"
     },
     {
       "id": "knowledge-data-layer-shop-points",
@@ -143,11 +251,13 @@
       "description": "需要了解 shop-points 数据库结构、ShardingSphere 分片策略时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points", "database", "sharding", "mybatis"],
-      "entry": "knowledge/shop-points/data-layer.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points",
+        "database",
+        "sharding",
+        "mybatis"
+      ],
+      "entry": "knowledge/shop-points/data-layer.md"
     },
     {
       "id": "knowledge-message-bus-shop-points",
@@ -155,11 +265,14 @@
       "description": "需要了解 shop-points 的 Kafka 消息流或修改消费者时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points", "kafka", "messaging", "consumer", "producer"],
-      "entry": "knowledge/shop-points/message-bus.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points",
+        "kafka",
+        "messaging",
+        "consumer",
+        "producer"
+      ],
+      "entry": "knowledge/shop-points/message-bus.md"
     },
     {
       "id": "knowledge-rpc-contracts-shop-points",
@@ -167,11 +280,13 @@
       "description": "需要了解 shop-points 提供或消费的 Dubbo RPC 接口时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points", "dubbo", "rpc", "interface"],
-      "entry": "knowledge/shop-points/rpc-contracts.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points",
+        "dubbo",
+        "rpc",
+        "interface"
+      ],
+      "entry": "knowledge/shop-points/rpc-contracts.md"
     },
     {
       "id": "knowledge-component-graph-shop-points-lottery",
@@ -179,11 +294,13 @@
       "description": "需要了解 shop-points-lottery 的 Maven 模块布局、包结构和依赖链时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points-lottery", "module", "maven", "structure"],
-      "entry": "knowledge/shop-points-lottery/component-graph.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points-lottery",
+        "module",
+        "maven",
+        "structure"
+      ],
+      "entry": "knowledge/shop-points-lottery/component-graph.md"
     },
     {
       "id": "knowledge-data-layer-shop-points-lottery",
@@ -191,11 +308,12 @@
       "description": "需要了解 shop-points-lottery 的数据库结构和数据源切换时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points-lottery", "database", "mybatis"],
-      "entry": "knowledge/shop-points-lottery/data-layer.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points-lottery",
+        "database",
+        "mybatis"
+      ],
+      "entry": "knowledge/shop-points-lottery/data-layer.md"
     },
     {
       "id": "knowledge-message-bus-shop-points-lottery",
@@ -203,11 +321,14 @@
       "description": "需要了解 shop-points-lottery 的 Kafka 消息流或修改消费者时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points-lottery", "kafka", "messaging", "consumer", "producer"],
-      "entry": "knowledge/shop-points-lottery/message-bus.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points-lottery",
+        "kafka",
+        "messaging",
+        "consumer",
+        "producer"
+      ],
+      "entry": "knowledge/shop-points-lottery/message-bus.md"
     },
     {
       "id": "knowledge-rpc-contracts-shop-points-lottery",
@@ -215,11 +336,13 @@
       "description": "需要了解 shop-points-lottery 消费的 Dubbo RPC 接口时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["shop-points-lottery", "dubbo", "rpc", "interface"],
-      "entry": "knowledge/shop-points-lottery/rpc-contracts.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "shop-points-lottery",
+        "dubbo",
+        "rpc",
+        "interface"
+      ],
+      "entry": "knowledge/shop-points-lottery/rpc-contracts.md"
     },
     {
       "id": "knowledge-service-topology",
@@ -227,11 +350,13 @@
       "description": "涉及 shop-points 和 shop-points-lottery 之间交互的需求时加载",
       "version": "0.1.0",
       "category": "knowledge",
-      "tags": ["integration", "cross-service", "dubbo", "kafka"],
-      "entry": "knowledge/service-topology.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "integration",
+        "cross-service",
+        "dubbo",
+        "kafka"
+      ],
+      "entry": "knowledge/service-topology.md"
     },
     {
       "id": "playbook-requirement-breakdown",
@@ -239,11 +364,12 @@
       "description": "收到需求文档或口头需求时触发，进行结构化需求拆解，产出 spec.md 和 tasks.md",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["analysis", "requirement", "spec"],
-      "entry": "playbooks/requirement-breakdown.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "analysis",
+        "requirement",
+        "spec"
+      ],
+      "entry": "playbooks/requirement-breakdown.md"
     },
     {
       "id": "playbook-scope-evaluation",
@@ -251,11 +377,12 @@
       "description": "编码前评估影响面时触发，追踪 Controller/Service/DAO/Mapper/Dubbo/Kafka 调用链",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["analysis", "scope", "trace"],
-      "entry": "playbooks/scope-evaluation.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "analysis",
+        "scope",
+        "trace"
+      ],
+      "entry": "playbooks/scope-evaluation.md"
     },
     {
       "id": "playbook-spring-boot-coding",
@@ -263,11 +390,13 @@
       "description": "编写或修改 Java/Spring Boot 业务代码时触发，定义编码流程和 Java 特定模式",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["coding", "java", "spring-boot", "mybatis"],
-      "entry": "playbooks/spring-boot-coding.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "coding",
+        "java",
+        "spring-boot",
+        "mybatis"
+      ],
+      "entry": "playbooks/spring-boot-coding.md"
     },
     {
       "id": "playbook-review-checklist",
@@ -275,11 +404,12 @@
       "description": "审查 Java 代码变更时触发，按优先级检查行为、分层、事务、Mapper、异常处理",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["review", "code-quality", "java"],
-      "entry": "playbooks/review-checklist.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "review",
+        "code-quality",
+        "java"
+      ],
+      "entry": "playbooks/review-checklist.md"
     },
     {
       "id": "playbook-test-authoring",
@@ -287,11 +417,13 @@
       "description": "编写或补充 Java 单元测试时触发，定义 JUnit5 + Mockito 测试模式和原则",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["testing", "junit", "mockito", "unit-test"],
-      "entry": "playbooks/test-authoring.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "testing",
+        "junit",
+        "mockito",
+        "unit-test"
+      ],
+      "entry": "playbooks/test-authoring.md"
     },
     {
       "id": "playbook-release-validation",
@@ -299,11 +431,24 @@
       "description": "部署前验证时触发，确认构建、配置、接口兼容性和回滚方案",
       "version": "0.1.0",
       "category": "playbooks",
-      "tags": ["deploy", "validation", "release"],
-      "entry": "playbooks/release-validation.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "deploy",
+        "validation",
+        "release"
+      ],
+      "entry": "playbooks/release-validation.md"
+    },
+    {
+      "id": "checkpoints",
+      "name": "验证命令",
+      "description": "编译、测试等验证命令的检查点定义",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "verification",
+        "checkpoints"
+      ],
+      "entry": "playbooks/checkpoints.md"
     },
     {
       "id": "runtime-pipeline",
@@ -311,11 +456,12 @@
       "description": "req-to-dev 8 阶段自动流转配置：阶段依赖、可跳过条件、规范资源加载规则",
       "version": "0.1.0",
       "category": "runtime",
-      "tags": ["runtime", "pipeline", "orchestration"],
-      "entry": "runtime/pipeline.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "runtime",
+        "pipeline",
+        "orchestration"
+      ],
+      "entry": "runtime/pipeline.md"
     },
     {
       "id": "runtime-triggers",
@@ -323,11 +469,12 @@
       "description": "定义何时自动启动 req-to-dev Pipeline：手动 / Issue 触发 / PRD 就绪触发",
       "version": "0.1.0",
       "category": "runtime",
-      "tags": ["runtime", "trigger", "automation"],
-      "entry": "runtime/triggers.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "runtime",
+        "trigger",
+        "automation"
+      ],
+      "entry": "runtime/triggers.md"
     },
     {
       "id": "runtime-recovery",
@@ -335,11 +482,13 @@
       "description": "各阶段失败时的自动恢复规则、重试策略、升级规则和状态流转",
       "version": "0.1.0",
       "category": "runtime",
-      "tags": ["runtime", "recovery", "retry", "escalation"],
-      "entry": "runtime/recovery.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "runtime",
+        "recovery",
+        "retry",
+        "escalation"
+      ],
+      "entry": "runtime/recovery.md"
     },
     {
       "id": "runtime-metrics",
@@ -347,11 +496,12 @@
       "description": "Agentic Coding 效率、质量、规范层的可量化指标定义和采集方式",
       "version": "0.1.0",
       "category": "runtime",
-      "tags": ["runtime", "metrics", "observability"],
-      "entry": "runtime/metrics.md",
-      "commands": [],
-      "references": [],
-      "config": {}
+      "tags": [
+        "runtime",
+        "metrics",
+        "observability"
+      ],
+      "entry": "runtime/metrics.md"
     }
   ]
 }

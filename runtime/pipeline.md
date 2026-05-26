@@ -12,25 +12,44 @@ Pipeline 由 `run_workflow.py` 状态管理器驱动，Agent 按 SKILL.md 指令
 
 ## 阶段定义
 
-| 阶段 | ID | Playbook | 输入 | 产出物（相对 changes/） | 自动流转 | 最大重试 |
-|------|-----|----------|------|------------------------|----------|----------|
-| PRD 拉取 | fetch-prd | feishu-doc-fetcher | 飞书 URL | request/prd.md | ✅ 自动 | 3 |
-| 需求拆解 | break-down | requirement-breakdown | prd.md | request/spec.md + request/tasks.md | ✅ 自动 | 0 |
-| 范围评估 | scope-eval | scope-evaluation | spec.md | impact/impact.md | ✅ 自动 | 0 |
-| **人工审批** | plan-approve | — | spec + impact | — | 🔒 阻塞等人 | 0 |
-| 技术方案 | tech-design | tech-design-generator | PRD + impact | tech-design/tech-design.md | ✅ 自动 | 0 |
-| 编码 | coding | spring-boot-coding | tech-design.md | 代码 diff（目标项目） | ✅ 自动 | 3 |
-| 审查 | review | review-checklist | 代码 diff | review/code_review_v1.md | ✅ 自动 | 2 |
-| 测试验证 | test | test-authoring + checkpoints | 代码 diff | tests/test_report.md | ✅ 自动 | 3 |
-| 发布验证 | release | release-validation | 全部产物 | deploy/verify.md | ✅ 自动 | 0 |
+| # | 阶段 | ID | 自动流转 | 产出物（相对 changes/） | 最大重试 |
+|---|------|----|----------|------------------------|----------|
+| 1 | PRD 拉取 | fetch-prd | ✅ 自动 | request/prd.md | 3 |
+| 2 | 需求拆解 | break-down | ✅ 自动 | request/spec.md + request/tasks.md | 0 |
+| 3 | 范围评估 | scope-eval | ✅ 自动 | impact/impact.md | 0 |
+| 4 | 技术方案 | tech-design | ✅ 自动 | tech-design/tech-design.md | 0 |
+| 5 | **人工审批** | plan-approve | 🔒 阻塞等人 | — | 0 |
+| 6 | 编码 | coding | ✅ 自动 | 代码 diff（目标项目） | 3 |
+| 7 | 审查 | review | ✅ 自动 | review/code_review_v1.md | 2 |
+| 8 | 测试验证 | test | ✅ 自动 | tests/test_report.md | 3 |
+| 9 | 发布验证 | release | ✅ 自动 | deploy/verify.md | 0 |
 
 ## 阶段依赖
 
 ```
-fetch-prd → break-down → scope-eval → plan-approve → tech-design → coding → review → test → release
-                                                              ↑
-                                                        唯一人工审批点
+fetch-prd → break-down → scope-eval → tech-design → [plan-approve] → coding → review → test → release
+                                                 ↑              ↑
+                                           自动生成方案    唯一人工审批点
+                                                          ┌─ 通过 → coding
+                                                          └─ 驳回 → 回退 scope-eval 重新执行
 ```
+
+## 审批内容
+
+plan-approve 阶段向用户展示三件套：
+
+```
+📋 审批内容：
+  1. request/spec.md              — 需求摘要
+  2. impact/impact.md             — 影响范围 + Won't Do 列表
+  3. tech-design/tech-design.md   — 技术方案
+
+❓ 是否批准进入编码阶段？
+```
+
+- 用户批准 → `approve` → 自动推进到 coding
+- 用户修改意见 → `reject --reason "..."` → 回退到 scope-eval 重新执行 scope-eval → tech-design
+- 用户拒绝 → 终止 Pipeline
 
 ## 可跳过条件
 
@@ -41,23 +60,31 @@ advance 时自动检测产出物，已存在则跳过：
 | fetch-prd | request/prd.md 已存在 |
 | break-down | request/spec.md + request/tasks.md 已存在 |
 | scope-eval | impact/impact.md 已存在 |
-| plan-approve | **不可跳过** |
 | tech-design | tech-design/tech-design.md 已存在 |
+| plan-approve | **不可跳过** |
 
 ## 阶段加载的规范
 
-每个阶段进入时，Agent 自动加载对应的规范资源。Knowledge 按目标项目加载：
+阶段资源映射由 `skills.json`（pipeline.stages）统一定义，通过 `skills_loader.py` 解析和加载：
 
-| 阶段 | 加载 |
-|------|------|
-| break-down | knowledge/project-atlas |
-| scope-eval | knowledge/{project}/component-graph, knowledge/{project}/data-layer |
-| tech-design | knowledge/project-atlas, knowledge/{project}/*, knowledge/service-topology |
-| coding | guardrails/layering-contracts, guardrails/ai-coding-spec, playbooks/spring-boot-coding |
-| review | guardrails/*（全部 4 个）, playbooks/review-checklist |
-| test | checkpoints, playbooks/test-authoring |
-| release | playbooks/release-validation |
+```bash
+# 查看某阶段的资源文件路径
+python3 skills_loader.py resolve --stage <stage_id> --project <project>
 
-`{project}` 由 `run_workflow.py init --target` 自动检测：
-- 路径含 `shop-points-lottery` → 加载 `knowledge/shop-points-lottery/*`
-- 其他 → 加载 `knowledge/shop-points/*`
+# 一步输出某阶段全部资源内容
+python3 skills_loader.py context --stage <stage_id> --project <project>
+```
+
+各阶段加载的资源：
+
+| 阶段 | 加载的资源 |
+|------|-----------|
+| break-down | knowledge-project-atlas |
+| scope-eval | knowledge-component-graph-${project}, knowledge-data-layer-${project} |
+| tech-design | knowledge-project-atlas, knowledge-component-graph-${project}, knowledge-data-layer-${project}, knowledge-message-bus-${project}, knowledge-rpc-contracts-${project}, knowledge-service-topology |
+| coding | guardrail-layering-contracts, guardrail-ai-coding-spec, playbook-spring-boot-coding |
+| review | guardrail-layering-contracts, guardrail-build-standards, guardrail-traceability-rules, guardrail-ai-coding-spec, playbook-review-checklist |
+| test | checkpoints, playbook-test-authoring |
+| release | playbook-release-validation |
+
+修改资源映射只需编辑 `skills.json`，无需同步多个文件。

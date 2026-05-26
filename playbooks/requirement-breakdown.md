@@ -23,7 +23,7 @@ commands: []
 2. 列出明确需求、隐含需求、待确认问题。
 3. 标注非目标，避免范围膨胀。
 4. 写出可验证的验收标准。
-5. 判断是否需要建 Change 目录（参考 `harness/guardrails/traceability-rules`）。
+5. 判断是否需要建 Change 目录（参考 `guardrails/traceability-rules`）。
 6. 确定受影响的项目（shop-points 和/或 shop-points-lottery）和模块。
 
 ## 产出

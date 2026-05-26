@@ -29,7 +29,7 @@ claude
 ```
 从这个飞书文档开发后端功能
 飞书 URL: https://feishu.cn/doc/xxx
-项目名称: add-points-expiry
+需求名称: add-points-expiry
 目标项目: /Users/qidi/IdeaProjects/shop-points
 ```
 
@@ -191,9 +191,9 @@ python3 skills/req-to-dev/scripts/run_workflow.py log --name add-points-expiry -
 
 ## 两个项目的区别
 
-| 参数 | shop-points | shop-points-lottery |
-|------|-------------|---------------------|
+| 参数 | shop-points                            | shop-points-lottery |
+|------|----------------------------------------|---------------------|
 | `--target` | `/Users/qidi/IdeaProjects/shop-points` | `/Users/qidi/IdeaProjects/shop-points-lottery` |
-| 自动加载 knowledge | `knowledge/shop-points/*` | `knowledge/shop-points-lottery/*` |
-| 模块数 | 8 | 5 |
-| 数据库 | 双库 + ShardingSphere 100 分片 | 双库（lottery + mall） |
+| 自动加载 knowledge | `knowledge/shop-points/*`              | `knowledge/shop-points-lottery/*` |
+| 模块数 | 8                                      | 5 |
+| 数据库 | 双库 + 部分表ShardingSphere 100 分片          | 双库（lottery + mall） |
