@@ -68,7 +68,7 @@ class XxxServiceTest {
 ## 实际约束
 
 - 当前项目父 POM 设置 `<skipTests>true</skipTests>`。
-- **仅对触碰模块显式启用**：`mvn test -pl <module> -DskipTests=false -Dtest=<TestClass>`。
+- **仅对触碰模块ada显式启用**：`mvn test -pl <module> -DskipTests=false -Dtest=<TestClass>`。
 - 不要试图一次性修复所有存量测试债务。
 
 ## Web 接口本地测试
@@ -84,7 +84,7 @@ class XxxServiceTest {
 
 ## 产出
 - `src/test/java/**/*Test.java`
-- `tests/test_report.md` 中记录执行命令和结果。
+- `tests/backend_test_report.md` 中记录执行命令和结果（Pipeline 阶段 `backend-test-local`）。
 
 ## 质量标准
 - 测试不能调用生产/预发环境网络。

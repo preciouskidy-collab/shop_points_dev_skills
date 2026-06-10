@@ -45,6 +45,9 @@ out/
 # Pipeline 运行时产出
 changes/
 
+# Pipeline 本地凭证（含大禹/测试环境账号）
+skills/req-to-dev/config/secrets.local.json
+
 # 临时目录
 tmp/
 temp/

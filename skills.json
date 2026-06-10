@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "version": "0.3.0",
-    "name": "Shop Points 后端 Skill 工具集",
-    "description": "Shop Points 研发团队后端 AI 辅助技能工具集"
+    "version": "0.4.0",
+    "name": "Shop Points 全栈 Skill 工具集",
+    "description": "Shop Points 研发团队全栈 AI 辅助技能工具集（后端 + 前端 + 大禹部署 + E2E）"
   },
   "pipeline": {
     "stages": [
@@ -68,8 +68,8 @@
         "max_retries": 0
       },
       {
-        "id": "coding",
-        "name": "编码",
+        "id": "backend-coding",
+        "name": "后端编码",
         "blocking": false,
         "artifacts": [],
         "resources": [
@@ -80,11 +80,44 @@
         "max_retries": 3
       },
       {
-        "id": "review",
-        "name": "审查",
+        "id": "frontend-handoff",
+        "name": "前端交接",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "handoff/frontend-handoff.md",
+          "handoff/api-contract.yaml"
+        ],
+        "resources": [
+          "playbook-frontend-handoff",
+          "knowledge-frontend-atlas"
+        ],
+        "max_retries": 2
+      },
+      {
+        "id": "frontend-coding",
+        "name": "前端编码",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [],
+        "resources": [
+          "playbook-frontend-coding",
+          "knowledge-frontend-atlas"
+        ],
+        "max_retries": 3
+      },
+      {
+        "id": "backend-review",
+        "name": "后端审查",
         "blocking": false,
         "artifacts": [
-          "review/code_review_v1.md"
+          "review/backend_review_v1.md"
         ],
         "resources": [
           "guardrail-layering-contracts",
@@ -96,15 +129,83 @@
         "max_retries": 2
       },
       {
-        "id": "test",
-        "name": "测试验证",
+        "id": "frontend-review",
+        "name": "前端审查",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "review/frontend_review_v1.md"
+        ],
+        "resources": [
+          "playbook-frontend-review-checklist",
+          "knowledge-frontend-atlas"
+        ],
+        "max_retries": 2
+      },
+      {
+        "id": "backend-test-local",
+        "name": "本地验证",
         "blocking": false,
         "artifacts": [
-          "tests/test_report.md"
+          "tests/backend_test_report.md"
         ],
         "resources": [
           "guardrail-build-standards",
           "playbook-test-authoring"
+        ],
+        "max_retries": 3
+      },
+      {
+        "id": "deploy-approve",
+        "name": "部署前审批",
+        "blocking": true,
+        "artifacts": [],
+        "resources": [],
+        "max_retries": 0
+      },
+      {
+        "id": "commit-push",
+        "name": "提交推送",
+        "blocking": false,
+        "artifacts": [
+          "deploy/git_push_report.md"
+        ],
+        "resources": [
+          "playbook-commit-push",
+          "playbook-git-branch-init"
+        ],
+        "max_retries": 2
+      },
+      {
+        "id": "dayu-deploy",
+        "name": "大禹部署",
+        "blocking": false,
+        "artifacts": [
+          "deploy/dayu_deploy_report.md"
+        ],
+        "resources": [
+          "playbook-dayu-deploy",
+          "knowledge-dayu-platform"
+        ],
+        "max_retries": 3
+      },
+      {
+        "id": "e2e-browser-test",
+        "name": "E2E 浏览器自测",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "tests/e2e_test_report.md"
+        ],
+        "resources": [
+          "playbook-e2e-browser-test",
+          "knowledge-test-env-topology"
         ],
         "max_retries": 3
       },
@@ -139,14 +240,17 @@
     {
       "id": "req-to-dev",
       "name": "需求到开发",
-      "description": "从飞书 PRD 到需求分析、技术方案、编码、审查、测试、发布的端到端工作流",
-      "version": "0.3.0",
+      "description": "从飞书 PRD 到全栈开发、大禹部署、E2E 自测的端到端工作流",
+      "version": "0.4.0",
       "category": "req-to-dev",
       "tags": [
         "workflow",
         "orchestration",
         "backend",
-        "feishu"
+        "frontend",
+        "fullstack",
+        "feishu",
+        "e2e"
       ],
       "entry": "skills/req-to-dev/scripts"
     },
@@ -437,6 +541,130 @@
         "release"
       ],
       "entry": "playbooks/release-validation.md"
+    },
+    {
+      "id": "playbook-git-branch-init",
+      "name": "Git 分支初始化",
+      "description": "Pipeline 启动时为各目标仓库 fetch/pull master 并创建 feature 分支",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "git",
+        "branch"
+      ],
+      "entry": "playbooks/git-branch-init.md"
+    },
+    {
+      "id": "playbook-frontend-handoff",
+      "name": "前端交接",
+      "description": "后端完成后产出 FDH 文档与 api-contract.yaml",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "frontend",
+        "handoff"
+      ],
+      "entry": "playbooks/frontend-handoff.md"
+    },
+    {
+      "id": "playbook-frontend-coding",
+      "name": "前端编码",
+      "description": "基于 FDH 修改 store-integral 或 store-integral-h5 前端代码",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "frontend",
+        "react",
+        "coding"
+      ],
+      "entry": "playbooks/frontend-coding.md"
+    },
+    {
+      "id": "playbook-frontend-review-checklist",
+      "name": "前端审查清单",
+      "description": "审查 React 前端变更与 FDH 一致性",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "frontend",
+        "review"
+      ],
+      "entry": "playbooks/frontend-review-checklist.md"
+    },
+    {
+      "id": "playbook-commit-push",
+      "name": "多仓提交推送",
+      "description": "deploy-approve 通过后多仓库 commit 并 push feature 分支",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "git",
+        "commit",
+        "push"
+      ],
+      "entry": "playbooks/commit-push.md"
+    },
+    {
+      "id": "playbook-dayu-deploy",
+      "name": "大禹部署",
+      "description": "通过 agent-browser 在大禹平台构建部署测试环境",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "deploy",
+        "dayu",
+        "agent-browser"
+      ],
+      "entry": "playbooks/dayu-deploy.md"
+    },
+    {
+      "id": "playbook-e2e-browser-test",
+      "name": "E2E 浏览器自测",
+      "description": "基于 FDH 用例在测试环境页面执行 agent-browser E2E",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "e2e",
+        "agent-browser",
+        "test"
+      ],
+      "entry": "playbooks/e2e-browser-test.md"
+    },
+    {
+      "id": "knowledge-frontend-atlas",
+      "name": "前端项目全景",
+      "description": "store-integral PC 与 store-integral-h5 技术栈、目录与路由",
+      "version": "0.1.0",
+      "category": "knowledge",
+      "tags": [
+        "frontend",
+        "react"
+      ],
+      "entry": "knowledge/frontend-atlas.md"
+    },
+    {
+      "id": "knowledge-dayu-platform",
+      "name": "大禹平台",
+      "description": "测试环境模块映射、部署 SOP 与日志路径",
+      "version": "0.1.0",
+      "category": "knowledge",
+      "tags": [
+        "deploy",
+        "dayu"
+      ],
+      "entry": "knowledge/dayu-platform.md"
+    },
+    {
+      "id": "knowledge-test-env-topology",
+      "name": "测试环境拓扑",
+      "description": "测试环境 URL、登录方式与联调拓扑",
+      "version": "0.1.0",
+      "category": "knowledge",
+      "tags": [
+        "test-env",
+        "e2e"
+      ],
+      "entry": "knowledge/test-env-topology.md"
     },
     {
       "id": "runtime-pipeline",

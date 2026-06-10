@@ -33,8 +33,20 @@ commands: []
 ## 产出
 - `impact/impact.md`
 
-模板结构：
+模板结构（**YAML frontmatter 必填**，供 `run_workflow.py` 解析阶段跳过与部署顺序）：
+
 ```markdown
+---
+frontend_scope: full | partial | none
+mall_scope: full | partial | none
+surfaces: [h5, pc]
+deploy_modules:
+  - shop-points
+  # - shop-points-lottery      # 仅 mall_scope != none 时加入
+  # - store-integral-cdn       # PC 有前端改动时
+  # - store-integral-h5-cdn    # H5 有前端改动时
+---
+
 # Impact Analysis
 ## Entry Points
 ## Files To Change（含完整路径）
@@ -42,9 +54,25 @@ commands: []
 ## Behavior Changes
 ## Compatibility Risks
 ## Cross-Service Impact（如有）
+## Frontend Impact
+- surfaces: h5 / pc / both / none
+- 涉及页面/路由
+- 涉及文件（PC: store-integral/client/...，H5: store-integral-h5/client-integral/...）
+## Mall Impact（商城）
+- 是否涉及积分商城（商品/订单/抽奖/兑换）
+- mall_scope 判定依据
 ## Won't Do
 ## Verification Plan
 ```
+
+### frontmatter 字段说明
+
+| 字段 | 取值 | 说明 |
+|------|------|------|
+| `frontend_scope` | `full` / `partial` / `none` | `none` 时跳过前端交接、编码、审查、E2E |
+| `mall_scope` | `full` / `partial` / `none` | `none` 时 `deploy_modules` 不含 lottery |
+| `surfaces` | `[h5]`, `[pc]`, `[h5, pc]` | 涉及的前端端 |
+| `deploy_modules` | 大禹模块名列表 | 决定 dayu-deploy 部署哪些项目 |
 
 ## 质量标准
 - 不只列文件名；要说明为什么受影响。

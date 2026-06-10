@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 """
 req-to-dev Pipeline 状态管理器
 
-管理 req-to-dev 9 阶段 pipeline 的状态流转：
+管理 req-to-dev 16 阶段 pipeline 的状态流转：
   init    — 初始化 pipeline，创建 changes 目录和状态文件
   status  — 查看当前 pipeline 进度
   advance — 推进到下一阶段（验证产出物）
@@ -36,12 +38,129 @@ _PROJECT_ROOT = _SCRIPT_DIR.parent.parent.parent
 SKILLS_JSON = _PROJECT_ROOT / "skills.json"
 
 
+DEFAULT_REPOS = {
+    "backend": {
+        "shop-points": "/Users/qidi/IdeaProjects/shop-points",
+        "shop-points-lottery": "/Users/qidi/IdeaProjects/shop-points-lottery",
+    },
+    "frontend": {
+        "pc": "/Users/qidi/IdeaProjects/store-integral",
+        "h5": "/Users/qidi/IdeaProjects/store-integral-h5",
+    },
+}
+
+
 def _detect_project(target_path: str) -> str:
     """根据 target_path 检测目标项目名，返回 'shop-points' 或 'shop-points-lottery'"""
     p = target_path.lower().rstrip("/")
     if "shop-points-lottery" in p:
         return "shop-points-lottery"
     return "shop-points"
+
+
+def _parse_impact_meta(change_dir: Path) -> dict:
+    """从 impact/impact.md 的 YAML frontmatter 解析元数据"""
+    defaults = {
+        "frontend_scope": "partial",
+        "mall_scope": "none",
+        "surfaces": ["h5", "pc"],
+        "deploy_modules": ["shop-points"],
+    }
+    impact_file = change_dir / "impact" / "impact.md"
+    if not impact_file.exists():
+        return defaults
+
+    text = impact_file.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return defaults
+
+    end = text.find("---", 3)
+    if end == -1:
+        return defaults
+
+    frontmatter = text[3:end].strip()
+    meta = dict(defaults)
+    current_key = None
+    list_items: list[str] = []
+
+    for line in frontmatter.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("- ") and current_key == "deploy_modules":
+            list_items.append(stripped[2:].strip())
+            continue
+        if current_key == "deploy_modules" and list_items:
+            meta["deploy_modules"] = list_items
+            list_items = []
+        if ":" in stripped:
+            key, _, val = stripped.partition(":")
+            key = key.strip()
+            val = val.strip()
+            current_key = key
+            if val.startswith("[") and val.endswith("]"):
+                inner = val[1:-1]
+                meta[key] = [v.strip() for v in inner.split(",") if v.strip()]
+            elif val:
+                meta[key] = val.strip("\"'")
+            else:
+                list_items = []
+        elif stripped.startswith("- "):
+            list_items.append(stripped[2:].strip())
+
+    if current_key == "deploy_modules" and list_items:
+        meta["deploy_modules"] = list_items
+
+    return meta
+
+
+def _should_skip_stage(change_dir: Path, stage_def: dict) -> tuple[bool, str]:
+    """根据 impact frontmatter 与 skip_when 判断是否跳过阶段"""
+    skip_when = stage_def.get("skip_when")
+    if not skip_when:
+        return False, ""
+
+    meta = _parse_impact_meta(change_dir)
+    field = skip_when.get("impact_field")
+    expected = skip_when.get("equals")
+    if field and meta.get(field) == expected:
+        return True, f"{field}={expected}"
+    return False, ""
+
+
+def _build_repos_state(
+    backend_target: str,
+    frontend_pc: str | None,
+    frontend_h5: str | None,
+    branch: str,
+) -> dict:
+    """构建多仓 repos 状态"""
+    return {
+        "backend": {
+            "shop-points": {
+                "path": backend_target,
+                "project": _detect_project(backend_target),
+                "branch": branch,
+            }
+        },
+        "frontend": {
+            "pc": {
+                "path": frontend_pc or DEFAULT_REPOS["frontend"]["pc"],
+                "dayu_module": "store-integral-cdn",
+                "branch": branch,
+            },
+            "h5": {
+                "path": frontend_h5 or DEFAULT_REPOS["frontend"]["h5"],
+                "dayu_module": "store-integral-h5-cdn",
+                "branch": branch,
+            },
+        },
+        "lottery": {
+            "path": DEFAULT_REPOS["backend"]["shop-points-lottery"],
+            "dayu_module": "shop-points-lottery",
+            "branch": branch,
+        },
+    }
 
 
 def _load_stages_from_config() -> list[dict]:
@@ -106,6 +225,45 @@ def _find_change_dir(name: str) -> Path | None:
     return None
 
 
+def _sync_stages_with_config(state: dict) -> dict:
+    """将 state.stages 与 skills.json 阶段顺序对齐，保留各阶段运行状态。"""
+    old_by_id = {s["id"]: s for s in state.get("stages", [])}
+    if not old_by_id:
+        return state
+
+    current_idx = state.get("current_stage", 0)
+    stages_list = state.get("stages", [])
+    current_id = stages_list[current_idx]["id"] if stages_list and 0 <= current_idx < len(stages_list) else None
+
+    new_stages = []
+    for s_def in STAGES:
+        sid = s_def["id"]
+        if sid in old_by_id:
+            entry = old_by_id[sid]
+            entry["name"] = s_def["name"]
+            entry["blocking"] = s_def["blocking"]
+            new_stages.append(entry)
+        else:
+            new_stages.append({
+                "id": sid,
+                "name": s_def["name"],
+                "status": "pending",
+                "blocking": s_def["blocking"],
+                "started_at": None,
+                "completed_at": None,
+                "retry_count": 0,
+                "fail_reason": None,
+            })
+
+    state["stages"] = new_stages
+    if current_id:
+        for i, s in enumerate(new_stages):
+            if s["id"] == current_id:
+                state["current_stage"] = i
+                break
+    return state
+
+
 def _load_state(change_dir: Path) -> dict:
     """加载 pipeline_state.json"""
     state_file = change_dir / "pipeline_state.json"
@@ -113,7 +271,10 @@ def _load_state(change_dir: Path) -> dict:
         print(f"ERROR: pipeline_state.json 不存在: {state_file}", file=sys.stderr)
         sys.exit(1)
     with open(state_file, "r", encoding="utf-8") as f:
-        return json.load(f)
+        state = json.load(f)
+    state = _sync_stages_with_config(state)
+    _save_state(change_dir, state)
+    return state
 
 
 def _save_state(change_dir: Path, state: dict):
@@ -179,16 +340,27 @@ def cmd_init(args):
         return
 
     # 创建目录结构
-    for subdir in ["request", "impact", "tech-design", "review", "tests", "deploy", "coding"]:
+    for subdir in [
+        "request", "impact", "tech-design", "review", "tests", "deploy", "coding", "handoff",
+    ]:
         (change_dir / subdir).mkdir(parents=True, exist_ok=True)
+
+    branch = f"feature/{name}"
+    backend_target = args.target
+    frontend_pc = getattr(args, "frontend_pc", None)
+    frontend_h5 = getattr(args, "frontend_h5", None)
+    surfaces = [s.strip() for s in getattr(args, "surfaces", "h5,pc").split(",") if s.strip()]
 
     # 初始化状态
     state = {
         "name": name,
         "change_dir": str(change_dir),
         "trigger": {"type": "manual", "url": args.url},
-        "target_path": args.target,
-        "project": _detect_project(args.target),
+        "target_path": backend_target,
+        "project": _detect_project(backend_target),
+        "branch": branch,
+        "surfaces": surfaces,
+        "repos": _build_repos_state(backend_target, frontend_pc, frontend_h5, branch),
         "current_stage": 0,
         "stages": [
             {
@@ -353,6 +525,17 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
     next_stage = state["stages"][next_idx]
     next_def = STAGES[next_idx]
 
+    # 按 impact 元数据跳过（如 frontend_scope=none）
+    should_skip, skip_reason = _should_skip_stage(change_dir, next_def)
+    if should_skip and not next_stage["blocking"]:
+        next_stage["status"] = "completed"
+        next_stage["completed_at"] = datetime.now().isoformat()
+        state["current_stage"] = next_idx
+        _save_state(change_dir, state)
+        _log(change_dir, f'SKIP {next_stage["id"]} ({skip_reason})')
+        print(f"⏭  跳过阶段 {next_stage['id']}（{skip_reason}）")
+        return _advance_to_next(change_dir, state, next_idx, name)
+
     # 跳过已有产出物的阶段
     if next_def["artifacts"] and not next_stage["blocking"]:
         skip_ok, _ = _check_artifacts(change_dir, next_def)
@@ -387,12 +570,24 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
         print()
         print("BLOCKING: 需要人工审批")
         print()
-        print(">>> 请向用户展示以下内容并请求审批：")
-        print("    - request/spec.md        需求规格")
-        print("    - impact/impact.md       影响范围（含 Won't Do）")
-        print("    - tech-design/tech-design.md  技术方案")
-        print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
-        print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
+        if next_stage["id"] == "plan-approve":
+            print(">>> 请向用户展示以下内容并请求审批（进入编码）：")
+            print("    - request/spec.md              需求规格")
+            print("    - impact/impact.md             影响范围（含 Won't Do）")
+            print("    - tech-design/tech-design.md   技术方案")
+            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
+            print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
+        elif next_stage["id"] == "deploy-approve":
+            print(">>> 请向用户展示以下内容并请求审批（进入部署）：")
+            print("    - 各仓库 git diff 摘要（backend + frontend）")
+            print("    - handoff/frontend-handoff.md  （如有前端）")
+            print("    - impact/impact.md → deploy_modules 列表")
+            print("    - review/backend_review_v1.md + review/frontend_review_v1.md")
+            print()
+            print("⚠️  deploy-approve 必须人工审批，通过后将 commit-push 到远程并部署测试环境")
+            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
+        else:
+            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
     else:
         print(f"  状态: running")
         if next_def.get("resources"):
@@ -568,7 +763,10 @@ def main():
     p_init = subparsers.add_parser("init", help="初始化 pipeline")
     p_init.add_argument("--url", required=True, help="飞书文档 URL")
     p_init.add_argument("--name", required=True, help="需求名称")
-    p_init.add_argument("--target", required=True, help="目标项目路径")
+    p_init.add_argument("--target", required=True, help="后端目标项目路径（shop-points 或 shop-points-lottery）")
+    p_init.add_argument("--frontend-pc", default=None, help="PC 前端路径（默认 store-integral）")
+    p_init.add_argument("--frontend-h5", default=None, help="H5 前端路径（默认 store-integral-h5）")
+    p_init.add_argument("--surfaces", default="h5,pc", help="涉及端，逗号分隔：h5,pc")
 
     # status
     p_status = subparsers.add_parser("status", help="查看 pipeline 状态")
