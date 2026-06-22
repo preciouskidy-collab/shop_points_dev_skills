@@ -10,7 +10,7 @@ from pathlib import Path
 CHANGES_BASE = Path("changes")
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _SCRIPT_DIR.parent.parent.parent.parent
-CONFIG_DIR = _SCRIPT_DIR.parent / "config"
+CONFIG_DIR = _SCRIPT_DIR.parent.parent / "config"
 
 
 def project_root() -> Path:

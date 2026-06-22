@@ -12,7 +12,9 @@ from typing import Any
 
 _LIB = Path(__file__).resolve().parent / "lib"
 sys.path.insert(0, str(_LIB))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同目录 import
 
+from collab_check_config import _print_report, run_check  # noqa: E402
 from collab_common import append_log, find_change_dir, iso_now, load_state, normalize_feishu_url, save_state  # noqa: E402
 from lark_cli import _plan_fingerprint, apply_prd  # noqa: E402
 from prd_sync_session import append_session_log, resolve_pre_pipeline_patch, save_session  # noqa: E402
@@ -148,6 +150,13 @@ def _approve_pre_pipeline(args: argparse.Namespace) -> int:
         print(f"ERROR: patch 状态为 {status}，仅 draft 可 approve", file=sys.stderr)
         return 1
 
+    # 预检：凭证 / 权限
+    if not args.skip_preflight:
+        preflight = run_check(test_url=prd_url)
+        if not preflight.ok:
+            _print_report(preflight)
+            return 1
+
     print("=" * 54)
     print(f"  PRD 写回确认 · {args.patch} · pre-pipeline")
     print(f"  session: {context_id} · mode: {args.mode}")
@@ -229,6 +238,13 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
     if status != "draft" and not (args.force and status == "prd_applied"):
         print(f"ERROR: patch 状态为 {status}，仅 draft 可 approve", file=sys.stderr)
         return 1
+
+    # 预检：凭证 / 权限
+    if not args.skip_preflight:
+        preflight = run_check(test_url=prd_url)
+        if not preflight.ok:
+            _print_report(preflight)
+            return 1
 
     print("=" * 54)
     print(f"  PRD 写回确认 · {args.patch} · {req_id} · mode: {args.mode}")
@@ -318,6 +334,10 @@ def main() -> int:
         "--confirmed-by",
         default="",
         help="agent-chat 模式：记录实际确认人（默认取 approver）",
+    )
+    parser.add_argument(
+        "--skip-preflight", action="store_true",
+        help="跳过凭证 / 权限预检（调试用）",
     )
     args = parser.parse_args()
 

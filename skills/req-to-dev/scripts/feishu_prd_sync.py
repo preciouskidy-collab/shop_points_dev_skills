@@ -9,7 +9,9 @@ from pathlib import Path
 
 _LIB = Path(__file__).resolve().parent / "lib"
 sys.path.insert(0, str(_LIB))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同目录 import
 
+from collab_check_config import _print_report, run_check  # noqa: E402
 from collab_common import normalize_feishu_url  # noqa: E402
 from lark_cli import fetch  # noqa: E402
 from patch_builder import build_meeting_plan, chat_confirm_phrase, finalize_pre_pipeline_patch, new_approval_nonce  # noqa: E402
@@ -22,7 +24,18 @@ def main() -> int:
     )
     parser.add_argument("--meeting-url", required=True, help="飞书会议纪要 wiki/docx URL")
     parser.add_argument("--prd-url", required=True, help="飞书 PRD wiki/docx URL")
+    parser.add_argument(
+        "--skip-preflight", action="store_true",
+        help="跳过凭证 / 权限预检（调试用）",
+    )
     args = parser.parse_args()
+
+    # 预检：凭证 / 权限
+    if not args.skip_preflight:
+        preflight = run_check(test_url=args.prd_url)
+        if not preflight.ok:
+            _print_report(preflight)
+            return 1
 
     prd_url = normalize_feishu_url(args.prd_url)
     session = load_session(prd_url)

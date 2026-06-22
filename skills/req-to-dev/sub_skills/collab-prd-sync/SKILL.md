@@ -1,7 +1,7 @@
 ---
 name: collab-prd-sync
 description: "当用户要根据飞书会议纪要 wiki 更新 PRD（init 前无 req_id）、或 Pipeline 联调后写回 PRD、执行 meeting/approve/digest/resync 时触发"
-version: "0.3.0"
+version: "0.4.0"
 category: req-to-dev
 tags:
   - collab
@@ -10,7 +10,12 @@ tags:
   - lark-cli
   - meeting-minutes
   - pre-pipeline
-commands: []
+commands:
+  - meeting
+  - approve
+  - digest
+  - resync
+  - check-config
 ---
 
 # collab-prd-sync — PRD 反向同步
@@ -96,3 +101,35 @@ python3 .../collab_prd_sync.py resync --req-id <req_id>
 ## Cursor 触发
 
 「根据这份会议纪要更新 PRD」+ 两个链接 → 执行 `meeting`，展示 `prd-sync/.../human_summary.md`，指导 `approve --prd-url`。
+
+## 凭证 / 权限自检（check-config）
+
+`meeting` / `approve` 在执行前会**自动预检**凭证是否缺失、是否有效、5 个权限是否充足。任一项不通过则直接退出，并打印三段诊断报告。
+
+预检覆盖的 5 个权限（缺一不可）：
+
+| 权限 | 探针 |
+|------|------|
+| `docx:document:write_only` | `lark-cli update --dry-run` |
+| `docx:document:readonly` | `GET /docx/v1/documents/{id}/raw_content` |
+| `wiki:wiki:readonly` | `GET /wiki/v2/spaces/get_node` |
+| `drive:drive:readonly` | `GET /drive/v1/files?limit=1` |
+| `im:resource` | `GET /im/v1/files?limit=1` |
+
+**手动调用**（独立诊断）：
+
+```bash
+python3 .../collab_prd_sync.py check-config \
+  --url "https://beike.feishu.cn/wiki/xxx"
+# 输出人类可读三段报告
+# --json 输出单行 JSON 供 Agent 解析
+# --skip-update-probe 跳过写权限探针
+```
+
+**调试绕过**：`meeting` / `approve` 加 `--skip-preflight` 跳过自检（不推荐生产用）。
+
+**Agent 协作模式**：
+
+- 用户首次跑 `meeting` / `approve` 失败时，Agent 自动跑 `check-config --json` 拿到结构化诊断
+- 根据 `permissions` 字段逐条提示用户：「请到飞书开放平台开通 X 权限」
+- 不修改任何 lark-cli / 凭证配置——自检只诊断不修复

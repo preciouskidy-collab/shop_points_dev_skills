@@ -33,6 +33,20 @@ def main() -> int:
     p_meeting = sub.add_parser("meeting", help="会议纪要 → PRD（pre-pipeline，无需 req_id）")
     p_meeting.add_argument("--meeting-url", required=True)
     p_meeting.add_argument("--prd-url", required=True)
+    p_meeting.add_argument(
+        "--skip-preflight", action="store_true",
+        help="跳过凭证 / 权限预检（调试用）",
+    )
+
+    p_check = sub.add_parser("check-config", help="凭证 / 权限自检")
+    p_check.add_argument(
+        "--url", default=None,
+        help="用于 docx / wiki 探针的 PRD URL（默认使用默认 PRD）",
+    )
+    p_check.add_argument(
+        "--skip-update-probe", action="store_true",
+        help="跳过 docx:document:write_only 探针（lark-cli 写权限）",
+    )
 
     p_approve = sub.add_parser("approve", help="交互审批 + 写回 PRD")
     p_approve.add_argument("--patch", required=True)
@@ -49,6 +63,10 @@ def main() -> int:
     )
     p_approve.add_argument("--chat-confirm", default="", help="用户在对话中的确认原话")
     p_approve.add_argument("--confirmed-by", default="")
+    p_approve.add_argument(
+        "--skip-preflight", action="store_true",
+        help="跳过凭证 / 权限预检（调试用）",
+    )
 
     p_resync = sub.add_parser("resync", help="PRD diff 增量回灌 spec/tasks")
     p_resync.add_argument("--req-id", required=True)
@@ -62,10 +80,17 @@ def main() -> int:
     if args.command == "digest":
         return _run("collab_digest.py", ["--req-id", args.req_id, "--window", args.window])
     if args.command == "meeting":
-        return _run(
-            "feishu_prd_sync.py",
-            ["--meeting-url", args.meeting_url, "--prd-url", args.prd_url],
-        )
+        meeting_argv = ["--meeting-url", args.meeting_url, "--prd-url", args.prd_url]
+        if args.skip_preflight:
+            meeting_argv.append("--skip-preflight")
+        return _run("feishu_prd_sync.py", meeting_argv)
+    if args.command == "check-config":
+        check_argv = []
+        if args.url:
+            check_argv.extend(["--url", args.url])
+        if args.skip_update_probe:
+            check_argv.append("--skip-update-probe")
+        return _run("collab_check_config.py", check_argv)
     if args.command == "approve":
         argv = ["--patch", args.patch, "--approver", args.approver]
         if args.prd_url:
@@ -84,6 +109,8 @@ def main() -> int:
             argv.extend(["--chat-confirm", args.chat_confirm])
         if args.confirmed_by:
             argv.extend(["--confirmed-by", args.confirmed_by])
+        if args.skip_preflight:
+            argv.append("--skip-preflight")
         return _run("collab_approve.py", argv)
     if args.command == "resync":
         return _run("prd_resync.py", ["--req-id", args.req_id])

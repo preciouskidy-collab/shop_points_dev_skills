@@ -230,6 +230,18 @@ class FeishuAPIClient:
             data = resp.read()
         return data, content_type
 
+    def probe_drive_readonly(self) -> dict:
+        """探针：GET /open-apis/drive/v1/files?limit=1 → 验证 drive:drive:readonly"""
+        return self._get_with_retry("/open-apis/drive/v1/files", "limit=1")
+
+    def probe_im_resource(self) -> dict:
+        """探针：GET /open-apis/im/v1/files/{fake_key} → 验证 im:resource
+
+        im/v1/files 无 list 端点；用 fake key 触发业务错误（如 code 234008），
+        由调用方根据错误码区分「权限不足」与「业务错误」。
+        """
+        return self._get_with_retry("/open-apis/im/v1/files/_check_config_probe")
+
 
 # ── 文档拉取 ──────────────────────────────────────────
 

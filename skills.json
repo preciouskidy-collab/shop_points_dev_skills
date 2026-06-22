@@ -274,8 +274,8 @@
     {
       "id": "collab-prd-sync",
       "name": "联调 PRD 同步",
-      "description": "当用户要根据飞书会议纪要 wiki 更新 PRD（init 前无 req_id）、或 Pipeline 联调后写回 PRD、执行 meeting/approve/digest/resync 时触发",
-      "version": "0.3.0",
+      "description": "当用户要根据飞书会议纪要 wiki 更新 PRD（init 前无 req_id）、或 Pipeline 联调后写回 PRD、执行 meeting/approve/digest/resync/check-config 时触发",
+      "version": "0.4.0",
       "category": "req-to-dev",
       "tags": [
         "collab",

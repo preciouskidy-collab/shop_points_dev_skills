@@ -1,6 +1,6 @@
 # Agent Collab API（Pipeline 本机调用）
 agent:
-  base_url: "http://shop-points-agent.internal"
+  base_url: "http://shop-points-agent.shop-points-test01.ttb.test.ke.com"
   timeout_sec: 30
   token: ""   # 对应 X-Collab-Token，与 Agent Apollo collabConfig.apiToken 一致
 
