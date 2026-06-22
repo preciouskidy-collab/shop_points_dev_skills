@@ -480,9 +480,78 @@ def replace_placeholders(markdown: str, success_map: Dict[str, Path], raw_json: 
 
 # ── 主流程 ────────────────────────────────────────────
 
-def fetch_and_save(url: str, output_dir: Path, project_name: str,
-                   app_id: str = "", app_secret: str = "") -> str:
-    """完整的获取 + 保存流程"""
+# ── lark-cli 路径（默认） ─────────────────────────────
+
+def _fetch_via_lark_cli(url: str, output_dir: Path, project_name: str) -> Path:
+    lib_dir = Path(__file__).resolve().parents[3] / "scripts" / "lib"
+    if str(lib_dir) not in sys.path:
+        sys.path.insert(0, str(lib_dir))
+    from lark_cli import check_available, fetch as lark_fetch  # noqa: WPS433
+
+    ok, msg = check_available()
+    if not ok:
+        raise RuntimeError(msg)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prd_path = output_dir / "prd.md"
+    lark_fetch(url, prd_path)
+
+    text = prd_path.read_text(encoding="utf-8").strip()
+    if not text.startswith("#"):
+        text = f"# {project_name}\n\n{text}\n"
+        prd_path.write_text(text, encoding="utf-8")
+
+    print(f"✓ lark-cli 文档已保存: {prd_path} ({len(text)} chars)")
+    return prd_path
+
+
+def _enrich_images(
+    url: str,
+    prd_path: Path,
+    output_dir: Path,
+    app_id: str,
+    app_secret: str,
+) -> None:
+    """在 lark-cli 拉取的 Markdown 上补充本地下载图片（legacy API）。"""
+    fetcher = FeishuFetcher(app_id, app_secret)
+    doc = fetcher.fetch_document(url)
+    if not doc.markdown and not doc.raw_json.get("images"):
+        print("⚠️  图片补充跳过：legacy API 未返回内容")
+        return
+
+    success_map, failed = save_images(doc, output_dir)
+    if not success_map:
+        return
+
+    text = prd_path.read_text(encoding="utf-8")
+    body = text
+    title = project_title_from_md(text) or doc.title or "未命名文档"
+    if body.startswith("#"):
+        parts = body.split("\n", 1)
+        body = parts[1].lstrip("\n") if len(parts) > 1 else ""
+
+    source_md = doc.markdown or body
+    enriched = replace_placeholders(source_md, success_map, doc.raw_json)
+    prd_path.write_text(f"# {title}\n\n{enriched.lstrip()}\n", encoding="utf-8")
+
+    images_dir = output_dir / "images"
+    image_files = {f.name for f in images_dir.iterdir() if f.is_file()} if images_dir.exists() else set()
+    print(f"✓ 图片目录: {images_dir} ({len(image_files)} 文件)")
+    if failed:
+        print(f"⚠️  图片解码失败: {len(failed)}")
+
+
+def project_title_from_md(text: str) -> str:
+    first = text.lstrip().split("\n", 1)[0]
+    if first.startswith("#"):
+        return first.lstrip("#").strip()
+    return ""
+
+
+def _fetch_via_legacy_api(
+    url: str, output_dir: Path, project_name: str, app_id: str, app_secret: str
+) -> str:
+    """完整 legacy API 路径（含图片）。"""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     fetcher = FeishuFetcher(app_id, app_secret)
@@ -490,21 +559,17 @@ def fetch_and_save(url: str, output_dir: Path, project_name: str,
 
     if not doc.markdown:
         prd_path = output_dir / "prd.md"
-        prd_path.write_text(f"# {project_name}\n\n⚠️ 飞书文档获取失败，请手动补充内容。\n", encoding="utf-8")
+        prd_path.write_text(
+            f"# {project_name}\n\n⚠️ 飞书文档获取失败，请手动补充内容。\n", encoding="utf-8"
+        )
         return str(prd_path)
 
-    # 保存图片
     success_map, failed = save_images(doc, output_dir)
-
-    # 替换占位符
     markdown = replace_placeholders(doc.markdown, success_map, doc.raw_json)
-
-    # 生成最终 Markdown
     final = f"# {doc.title}\n\n{markdown}"
     prd_path = output_dir / "prd.md"
     prd_path.write_text(final, encoding="utf-8")
 
-    # 校验
     images_dir = output_dir / "images"
     image_files = set()
     if images_dir.exists():
@@ -520,16 +585,60 @@ def fetch_and_save(url: str, output_dir: Path, project_name: str,
     return str(prd_path)
 
 
+def fetch_and_save(
+    url: str,
+    output_dir: Path,
+    project_name: str,
+    app_id: str = "",
+    app_secret: str = "",
+    *,
+    with_images: bool = False,
+    legacy_api: bool = False,
+) -> str:
+    """获取 + 保存：默认 lark-cli；--legacy-api 或 --with-images 可走 legacy API。"""
+    if legacy_api:
+        return _fetch_via_legacy_api(url, output_dir, project_name, app_id, app_secret)
+
+    try:
+        prd_path = _fetch_via_lark_cli(url, output_dir, project_name)
+    except RuntimeError as e:
+        print(f"⚠️  lark-cli 不可用，降级 legacy API: {e}", file=sys.stderr)
+        return _fetch_via_legacy_api(url, output_dir, project_name, app_id, app_secret)
+
+    if with_images:
+        _enrich_images(url, prd_path, output_dir, app_id, app_secret)
+
+    return str(prd_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="飞书文档获取器")
     parser.add_argument("doc_url", help="飞书文档 URL")
-    parser.add_argument("--output-dir", required=True, help="输出目录 (如 docs/req-to-dev/my-project/prd)")
+    parser.add_argument("--output-dir", required=True, help="输出目录 (如 changes/<req-id>/request)")
     parser.add_argument("--project-name", default="未命名项目", help="项目名称")
-    parser.add_argument("--app-id", default="", help="飞书应用 App ID（首次使用时传入，自动保存到配置文件）")
-    parser.add_argument("--app-secret", default="", help="飞书应用 App Secret（首次使用时传入，自动保存到配置文件）")
+    parser.add_argument("--app-id", default="", help="飞书应用 App ID（legacy API / 图片补充时使用）")
+    parser.add_argument("--app-secret", default="", help="飞书应用 App Secret")
+    parser.add_argument(
+        "--with-images",
+        action="store_true",
+        help="lark-cli 拉取后，用 legacy API 补充下载图片到 images/",
+    )
+    parser.add_argument(
+        "--legacy-api",
+        action="store_true",
+        help="强制使用直连飞书 Open API（不经过 lark-cli）",
+    )
     args = parser.parse_args()
 
-    fetch_and_save(args.doc_url, Path(args.output_dir), args.project_name, args.app_id, args.app_secret)
+    fetch_and_save(
+        args.doc_url,
+        Path(args.output_dir),
+        args.project_name,
+        args.app_id,
+        args.app_secret,
+        with_images=args.with_images,
+        legacy_api=args.legacy_api,
+    )
 
 
 if __name__ == "__main__":

@@ -51,3 +51,9 @@ skills/req-to-dev/config/secrets.local.json
 # 临时目录
 tmp/
 temp/
+
+# PRD 同步（collab-prd-sync 子流程产物）
+prd-sync/
+
+# Cursor 编辑器配置
+.cursor/

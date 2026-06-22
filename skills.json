@@ -13,7 +13,9 @@
         "artifacts": [
           "request/prd.md"
         ],
-        "resources": [],
+        "resources": [
+          "feishu-doc-fetcher"
+        ],
         "max_retries": 3
       },
       {
@@ -257,17 +259,32 @@
     {
       "id": "feishu-doc-fetcher",
       "name": "飞书文档获取器",
-      "description": "直连飞书开放平台 API 从飞书 URL 获取文档内容，转换为 Markdown 并下载图片到本地",
-      "version": "0.3.0",
+      "description": "当用户提供飞书文档链接并需要获取 PRD 内容时触发，默认通过 lark-cli 拉取 Markdown，可选 --with-images 补充图片",
+      "version": "0.5.0",
       "category": "req-to-dev",
       "tags": [
         "feishu",
         "document",
-        "api",
+        "lark-cli",
         "markdown",
         "prd"
       ],
-      "entry": "skills/req-to-dev/sub_skills/feishu-doc-fetcher/scripts"
+      "entry": "skills/req-to-dev/sub_skills/feishu-doc-fetcher/SKILL.md"
+    },
+    {
+      "id": "collab-prd-sync",
+      "name": "联调 PRD 同步",
+      "description": "当用户要根据飞书会议纪要 wiki 更新 PRD（init 前无 req_id）、或 Pipeline 联调后写回 PRD、执行 meeting/approve/digest/resync 时触发",
+      "version": "0.3.0",
+      "category": "req-to-dev",
+      "tags": [
+        "collab",
+        "prd",
+        "feishu",
+        "lark-cli",
+        "wechat"
+      ],
+      "entry": "skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md"
     },
     {
       "id": "guardrail-layering-contracts",

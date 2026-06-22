@@ -131,7 +131,48 @@ Playbooks 解决了"能力封装"——Agent 知道每一步怎么做。Agent Ru
 
 ---
 
-## 原则
+## 会议纪要 → PRD（collab-prd-sync · 链路 1）
+
+**触发**：用户给「会议纪要 URL + PRD URL」，说「根据会议纪要更新 PRD」。
+
+### Agent 只做 1 件事（禁止发散）
+
+在仓库根目录**只跑这一条命令**，不要先探目录、不要跑连通性测试、不要读其它文件：
+
+```bash
+python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py meeting \
+  --meeting-url "<纪要URL>" \
+  --prd-url "<PRD URL>"
+```
+
+成功后：贴 `human_summary`，并请用户在对话回复：
+
+`确认 <patch> <验证码> approver <姓名>`
+
+用户回复后，Agent 执行 approve（`--chat-confirm` 为用户原话）：
+
+```bash
+python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py approve \
+  --prd-url "<PRD URL>" --patch patch-NNN --approver <姓名> \
+  --chat-confirm "<用户刚发的原话>"
+```
+
+### Agent 禁止做的事
+
+| 禁止 | 原因 |
+|------|------|
+| 未经用户对话确认就 approve | 必须带 `--chat-confirm` |
+| 跑 `collab_lark_test.py` | meeting 失败再测 |
+| 要求 `req_id`（链路1） | init 之前不存在 |
+| 链路1 跑 `resync` | 尚无 Pipeline 产物 |
+
+### 生命周期
+
+会议纪要 → PRD（无 req_id）→ `approve` → **此后** `run_workflow init` 才产生 req_id。
+
+详见 `skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md`、`AGENTS.md`。
+
+---
 
 - Guardrails 是硬性约束，Playbooks 是推荐方法
 - 旧版本只追加不覆盖（v1→v2→v3）

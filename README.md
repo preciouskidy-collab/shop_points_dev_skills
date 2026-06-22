@@ -38,6 +38,7 @@ mkdir -p "$SKILLS_DST"
 # 符号链接 skill
 ln -sf "$SKILLS_SRC/req-to-dev" "$SKILLS_DST/req-to-dev"
 ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/feishu-doc-fetcher" "$SKILLS_DST/feishu-doc-fetcher"
+ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/collab-prd-sync" "$SKILLS_DST/collab-prd-sync"
 ln -sf "$SKILLS_SRC/common/skill-creator" "$SKILLS_DST/skill-creator"
 ```
 
@@ -104,8 +105,9 @@ Claude 匹配到 SKILL.md 的 `description` 字段后会自动执行对应技能
 
 | 类别 | Skill | 版本 | 说明 |
 |------|-------|------|------|
-| **req-to-dev** | req-to-dev | 0.3.0 | 飞书 PRD → 需求拆解 → 编码 → 审查 → 测试 → 发布 端到端 Pipeline |
-| **req-to-dev** | feishu-doc-fetcher | 0.3.0 | 飞书文档获取与转换 |
+| **req-to-dev** | req-to-dev | 0.4.0 | 飞书 PRD → 全栈开发 → 部署 → E2E 端到端 Pipeline |
+| **req-to-dev** | feishu-doc-fetcher | 0.5.0 | 飞书 PRD 拉取（lark-cli，fetch-prd 阶段绑定） |
+| **req-to-dev** | collab-prd-sync | 0.2.0 | 联调群 / 会议纪要 → PRD + resync（侧车） |
 | **common** | skill-creator | 0.1.0 | 创建和验证新 skill 的元工具 |
 
 ## 使用方式
@@ -127,13 +129,23 @@ AI IDE（Claude Code、Trae、Cursor 等）通过匹配 SKILL.md 的 `descriptio
 
 需提供：飞书文档 URL、项目名称、目标项目路径（代码生成位置）。
 
-**feishu-doc-fetcher（飞书文档获取器）**
+**feishu-doc-fetcher（飞书 PRD 拉取 · fetch-prd 阶段）**
 
 | 触发语句 | 说明 |
 |---------|------|
-| `帮我获取这个飞书文档 https://beike.feishu.cn/wiki/xxx` | 单独获取飞书文档 |
-| `读取这个飞书链接的内容` | 单独获取飞书文档 |
-| `把飞书文档转成 Markdown` | 单独获取飞书文档 |
+| `帮我获取这个飞书文档 https://beike.feishu.cn/wiki/xxx` | lark-cli 拉取 PRD |
+| `读取这个飞书链接的内容` | 同上 |
+| `把飞书 PRD 转成 Markdown` | 同上 |
+
+**collab-prd-sync（联调 PRD 同步 · 侧车）**
+
+| 触发语句 | 说明 |
+|---------|------|
+| `整理联调消息写回 PRD，req_id xxx` | 链路 2 · digest |
+| `根据这份会议纪要更新 PRD` + wiki 链接 | 链路 1 · meeting |
+| `审批 patch-001 写回 PRD` | 交互式 approve（终端 y） |
+| `PRD 已更新，帮我 prd resync` | 增量回灌 spec/tasks |
+| `/collab-prd-sync` | Claude Code 斜杠命令 |
 
 **skill-creator（Skill 创建器）**
 

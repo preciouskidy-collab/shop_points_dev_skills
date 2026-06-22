@@ -99,9 +99,19 @@ python3 skills/req-to-dev/scripts/run_workflow.py init \
 
 ### Step 1–4：分析阶段（自动）
 
-与 v0.3 相同：`fetch-prd` → `break-down` → `scope-eval` → `tech-design`
+`fetch-prd`（加载 **feishu-doc-fetcher** Skill，lark-cli 拉 PRD）→ `break-down` → `scope-eval` → `tech-design`
 
 **scope-eval 额外要求**：`impact/impact.md` 必须含 YAML frontmatter（`frontend_scope`、`mall_scope`、`surfaces`、`deploy_modules`），见 `playbooks/scope-evaluation.md`。
+
+### 侧车：collab-prd-sync
+
+| 阶段 | 链路 | 命令 | req_id |
+|------|------|------|--------|
+| PRD 定稿（init 前） | 会议纪要 → PRD | `meeting` → `approve --prd-url` | ❌ |
+| 开发立项 | — | `run_workflow init` | ✅ 产生 |
+| 编码联调 | 企微群 → PRD | `digest` → `approve --req-id` → `resync` | ✅ |
+
+详见 `skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md`。
 
 ### Step 5：plan-approve 🔒
 

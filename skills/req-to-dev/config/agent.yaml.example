@@ -1,0 +1,12 @@
+# Agent Collab API（Pipeline 本机调用）
+agent:
+  base_url: "http://shop-points-agent.internal"
+  timeout_sec: 30
+  token: ""   # 对应 X-Collab-Token，与 Agent Apollo collabConfig.apiToken 一致
+
+# lark-cli（联调 PRD 读写）
+# 安装: npm install -g @larksuite/cli
+# 配置: 见 scripts/setup_lark_cli.sh（读取 ~/.shop-points-dev-skills/feishu-config.json）
+lark_cli:
+  binary: "lark-cli"          # 或 /opt/homebrew/bin/lark-cli
+  fetch_format: "pretty"      # pretty | json

@@ -215,14 +215,61 @@ def _resolve_resources(resources: list[str], project: str) -> list[str]:
     return result
 
 
+def _resolve_slug_or_name(args) -> str:
+    """解析 slug（优先 --slug，兼容 --name）"""
+    slug = getattr(args, "slug", None) or getattr(args, "name", None)
+    if not slug:
+        print("ERROR: 需要 --slug 或 --name", file=sys.stderr)
+        sys.exit(1)
+    return slug.strip()
+
+
+def _generate_req_id(slug: str) -> str:
+    """生成 req_id：{YYYYMMDD}-{slug}，冲突时追加 -2, -3 …"""
+    today = datetime.now().strftime("%Y%m%d")
+    base = f"{today}-{slug}"
+    if not (CHANGES_BASE / base).exists():
+        return base
+    n = 2
+    while (CHANGES_BASE / f"{base}-{n}").exists():
+        n += 1
+    return f"{base}-{n}"
+
+
 def _find_change_dir(name: str) -> Path | None:
-    """根据 name 查找 changes 目录（支持 YYYYMMDD-*-name 模式）"""
+    """根据 req_id / slug / legacy name 查找 changes 目录"""
     if not CHANGES_BASE.exists():
         return None
-    for d in sorted(CHANGES_BASE.iterdir()):
-        if d.is_dir() and d.name.endswith(f"-{name}"):
-            return d
-    return None
+
+    exact = CHANGES_BASE / name
+    if exact.is_dir():
+        return exact
+
+    candidates: list[Path] = []
+    for d in CHANGES_BASE.iterdir():
+        if not d.is_dir():
+            continue
+        if d.name == name or d.name.endswith(f"-{name}"):
+            candidates.append(d)
+
+    if not candidates:
+        return None
+
+    # 优先匹配 state 中 req_id / slug / name 完全一致
+    for d in sorted(candidates, reverse=True):
+        state_file = d / "pipeline_state.json"
+        if not state_file.exists():
+            continue
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            for key in ("req_id", "slug", "name"):
+                if state.get(key) == name:
+                    return d
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return sorted(candidates, reverse=True)[0]
 
 
 def _sync_stages_with_config(state: dict) -> dict:
@@ -328,24 +375,25 @@ def _print_stage_header(stage: dict, index: int):
 
 def cmd_init(args):
     """初始化 pipeline"""
-    name = args.name
-    today = datetime.now().strftime("%Y%m%d")
-    change_name = f"{today}-req-{name}"
-    change_dir = CHANGES_BASE / change_name
+    slug = _resolve_slug_or_name(args)
+    req_id = _generate_req_id(slug)
+    change_dir = CHANGES_BASE / req_id
 
     if change_dir.exists():
         print(f"Change 目录已存在: {change_dir}")
         state = _load_state(change_dir)
+        print(f"req_id: {state.get('req_id', req_id)}")
         print(f"当前阶段: {state['stages'][state['current_stage']]['id']}")
         return
 
     # 创建目录结构
     for subdir in [
         "request", "impact", "tech-design", "review", "tests", "deploy", "coding", "handoff",
+        "collaboration",
     ]:
         (change_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    branch = f"feature/{name}"
+    branch = f"feature/{req_id}"
     backend_target = args.target
     frontend_pc = getattr(args, "frontend_pc", None)
     frontend_h5 = getattr(args, "frontend_h5", None)
@@ -353,13 +401,22 @@ def cmd_init(args):
 
     # 初始化状态
     state = {
-        "name": name,
+        "req_id": req_id,
+        "slug": slug,
+        "name": req_id,
         "change_dir": str(change_dir),
         "trigger": {"type": "manual", "url": args.url},
         "target_path": backend_target,
         "project": _detect_project(backend_target),
         "branch": branch,
         "surfaces": surfaces,
+        "collaboration": {
+            "binding_status": None,
+            "group_id": None,
+            "last_patch_seq": 0,
+            "patches": {},
+        },
+        "prd_resync": {},
         "repos": _build_repos_state(backend_target, frontend_pc, frontend_h5, branch),
         "current_stage": 0,
         "stages": [
@@ -382,10 +439,12 @@ def cmd_init(args):
     state["stages"][0]["started_at"] = datetime.now().isoformat()
 
     _save_state(change_dir, state)
-    _log(change_dir, f'INIT pipeline "{name}" target={args.target} project={state["project"]}')
+    _log(change_dir, f'INIT pipeline req_id={req_id} slug={slug} target={args.target} project={state["project"]}')
     _log(change_dir, f'STAGE fetch-prd → running')
 
     print(f"Pipeline 已初始化: {change_dir}")
+    print(f"req_id: {req_id}")
+    print(f"branch: {branch}")
     print()
     _print_stage_header(STAGES[0], 0)
     print(f"  状态: running")
@@ -395,8 +454,8 @@ def cmd_init(args):
         print(f"  加载规范: {', '.join(resolved)}")
     print(f"  产出物: {', '.join(STAGES[0]['artifacts']) or '(无固定文件)'}")
     print()
-    print(">>> AGENT: 执行阶段 fetch-prd（调用 feishu-doc-fetcher 获取 PRD）")
-    print(f">>> 完成后运行: python3 {sys.argv[0]} advance --name {name}")
+    print(">>> AGENT: 执行阶段 fetch-prd（加载 feishu-doc-fetcher Skill，lark-cli 拉 PRD）")
+    print(f">>> 完成后运行: python3 {sys.argv[0]} advance --name {req_id}")
 
 
 def cmd_status(args):
@@ -762,7 +821,8 @@ def main():
     # init
     p_init = subparsers.add_parser("init", help="初始化 pipeline")
     p_init.add_argument("--url", required=True, help="飞书文档 URL")
-    p_init.add_argument("--name", required=True, help="需求名称")
+    p_init.add_argument("--slug", default=None, help="需求 slug（如 vip-points），用于生成 req_id")
+    p_init.add_argument("--name", default=None, help="[兼容] 同 --slug")
     p_init.add_argument("--target", required=True, help="后端目标项目路径（shop-points 或 shop-points-lottery）")
     p_init.add_argument("--frontend-pc", default=None, help="PC 前端路径（默认 store-integral）")
     p_init.add_argument("--frontend-h5", default=None, help="H5 前端路径（默认 store-integral-h5）")
