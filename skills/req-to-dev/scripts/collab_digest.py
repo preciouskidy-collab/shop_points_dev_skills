@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""联调消息整理：拉 Agent 消息 + lark-cli fetch/dry-run + 本地 patch。"""
+"""联调消息整理：拉 Agent 消息 → AI 摘要 + 对照 PRD → lark-cli dry-run。"""
 
 from __future__ import annotations
 
@@ -23,68 +23,27 @@ from collab_common import (  # noqa: E402
     save_state,
 )
 from lark_cli import fetch, update_dry_run  # noqa: E402
-from patch_builder import build_human_summary_pipeline, chat_confirm_phrase, new_approval_nonce  # noqa: E402
-
-
-def _format_messages(messages: list[dict]) -> str:
-    lines = []
-    for m in messages:
-        sender = m.get("senderId") or m.get("sender_id") or "unknown"
-        content = (m.get("content") or "").strip()
-        if not content or content.startswith("/"):
-            continue
-        lines.append(f"- [{sender}] {content}")
-    return "\n".join(lines) if lines else "- （无有效聊天消息）"
-
-
-def _build_plan_json(messages_md: str, prd_url: str, patch_id: str) -> dict:
-    items = []
-    bullet_lines = []
-    for line in messages_md.splitlines():
-        text = line.strip()
-        if text.startswith("- ["):
-            items.append({"type": "collab_item", "summary": text})
-            bullet_lines.append(text[2:].strip() if text.startswith("- ") else text)
-
-    content_lines = [f"## 联调变更 · {patch_id}", ""]
-    if bullet_lines:
-        content_lines.extend(f"- {b}" for b in bullet_lines)
-    else:
-        content_lines.append("- （待补充联调共识）")
-    content_lines.append("")
-
-    return {
-        "version": 1,
-        "source": "collab_digest",
-        "prd_url": prd_url,
-        "changes": items,
-        "update": {
-            "command": "append",
-            "doc_format": "markdown",
-            "content": "\n".join(content_lines),
-        },
-    }
-
-
-def _build_human_summary(patch_id: str, req_id: str, plan: dict) -> str:
-    lines = [f"# {patch_id} 预览 · `{req_id}`", ""]
-    for i, item in enumerate(plan.get("changes", []), 1):
-        lines.append(f"{i}. {item.get('summary', item)}")
-    lines.extend(
-        [
-            "",
-            "请 @产品 确认后，由 RD 在本机执行：",
-            f"  python collab_approve.py --req-id {req_id} --patch {patch_id} --approver <pm_id>",
-        ]
-    )
-    return "\n".join(lines) + "\n"
+from patch_builder import (  # noqa: E402
+    _format_collab_messages_md,
+    build_collab_plan,
+    build_human_summary_pipeline,
+    chat_confirm_phrase,
+    new_approval_nonce,
+)
+from llm_client import is_llm_available  # noqa: E402
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="联调 digest：拉消息 + lark-cli + 本地 patch")
+    parser = argparse.ArgumentParser(
+        description="联调 digest：AI 摘要群消息 + 对照 PRD 生成 patch + dry-run",
+    )
     parser.add_argument("--req-id", required=True)
     parser.add_argument("--window", default="48h")
-    parser.add_argument("--agent-config", type=Path, default=None)
+    parser.add_argument(
+        "--no-llm",
+        action="store_true",
+        help="禁用 LLM，仅用启发式（颜色/删除类规则）",
+    )
     args = parser.parse_args()
 
     change_dir = find_change_dir(args.req_id)
@@ -106,35 +65,66 @@ def main() -> int:
     msg_resp = client.list_messages(req_id, since=since, limit=500)
     messages = msg_resp.get("messages", [])
     if not messages:
-        print("WARN: 时间窗内无消息，仍将基于 PRD 生成空 patch")
+        print("WARN: 时间窗内无消息，仍将基于 PRD 生成 patch")
 
     patch_id, seq = next_patch_id(change_dir, state)
     pdir = patch_dir(change_dir, patch_id)
 
     prd_snapshot = change_dir / "request" / "prd.md"
     fetch(prd_url, prd_snapshot)
+    prd_md = prd_snapshot.read_text(encoding="utf-8")
+    (pdir / "prd_snapshot.md").write_text(prd_md, encoding="utf-8")
 
-    messages_md = _format_messages(messages)
+    messages_md = _format_collab_messages_md(messages)
+    (pdir / "messages_raw.md").write_text(
+        messages_md or "（无有效消息）\n", encoding="utf-8"
+    )
+
+    use_llm = not args.no_llm
+    if use_llm and not is_llm_available():
+        print("WARN: 未配置 LLM（secrets.local.json → llm.api_key），使用启发式摘要")
+
+    plan, plan_source = build_collab_plan(
+        messages,
+        prd_md,
+        prd_url=prd_url,
+        patch_id=patch_id,
+        use_llm=use_llm,
+    )
+    (pdir / "collab_summary.md").write_text(
+        (plan.get("consensus_summary") or "") + "\n", encoding="utf-8"
+    )
+
+    update_cmd = plan.get("update", {}).get("command", "?")
+    print(f"✓ 规划完成 plan_source={plan_source} update.command={update_cmd}")
+
     (pdir / "digest_prompt.md").write_text(
         "\n".join(
             [
-                "# Digest Prompt",
+                "# Digest Prompt · 联调群 → PRD",
+                "",
+                f"plan_source: {plan_source}",
                 "",
                 "## PRD URL",
                 prd_url,
                 "",
-                "## 联调消息",
+                "## 原始联调消息",
                 messages_md,
                 "",
-                "## 任务",
-                "请根据联调消息与 PRD，输出 PRD patch 计划到 plan.json（changes 数组）。",
+                "## AI 联调共识摘要",
+                plan.get("consensus_summary") or "",
+                "",
+                "## PRD 差异说明",
+                plan.get("prd_diff_summary") or "",
+                "",
+                "## 当前 PRD 快照（节选）",
+                prd_md[:8000],
             ]
         ),
         encoding="utf-8",
     )
 
     plan_path = pdir / "plan.json"
-    plan = _build_plan_json(messages_md, prd_url, patch_id)
     plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
 
     approval_nonce = new_approval_nonce()
@@ -149,8 +139,9 @@ def main() -> int:
     dry_log = pdir / "dry_run.log"
     try:
         update_dry_run(prd_url, plan_path, log_path=dry_log)
+        print("✓ lark-cli dry-run 通过")
     except RuntimeError as e:
-        print(f"WARN: dry-run 失败（可完善 plan.json 后重试 approve 前再跑）: {e}")
+        print(f"WARN: dry-run 失败（可修订 plan.json 后重试）: {e}")
 
     meta = {
         "patch_id": patch_id,
@@ -158,6 +149,8 @@ def main() -> int:
         "req_id": req_id,
         "window": args.window,
         "message_count": len(messages),
+        "plan_source": plan_source,
+        "update_command": update_cmd,
         "digest_at": iso_now(),
         "status": "draft",
         "approver": None,
@@ -174,7 +167,7 @@ def main() -> int:
     collab["last_patch_seq"] = seq
     collab.setdefault("patches", {})[patch_id] = {"status": "draft", "digest_at": meta["digest_at"]}
     save_state(change_dir, state)
-    append_log(change_dir, f"COLLAB digest {patch_id} messages={len(messages)}")
+    append_log(change_dir, f"COLLAB digest {patch_id} messages={len(messages)} source={plan_source}")
 
     print(f"✓ patch 已生成: {pdir}")
     print(f"✓ 请在 Agent 对话中回复：`{chat_confirm_phrase(patch_id, approval_nonce)}`")

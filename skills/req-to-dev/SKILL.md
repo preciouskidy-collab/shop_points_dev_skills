@@ -105,6 +105,8 @@ python3 skills/req-to-dev/scripts/run_workflow.py init \
 
 ### 侧车：collab-prd-sync
 
+**自然语言触发**：`整理联调消息写回 PRD` = 群消息→摘要→对照 PRD 找出入→dry-run→**人工确认后**才写 PRD（见 `sub_skills/collab-prd-sync/SKILL.md`）。
+
 | 阶段 | 链路 | 命令 | req_id |
 |------|------|------|--------|
 | PRD 定稿（init 前） | 会议纪要 → PRD | `meeting` → `approve --prd-url` | ❌ |

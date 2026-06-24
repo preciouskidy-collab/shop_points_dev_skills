@@ -274,15 +274,29 @@
     {
       "id": "collab-prd-sync",
       "name": "联调 PRD 同步",
-      "description": "当用户要根据飞书会议纪要 wiki 更新 PRD（init 前无 req_id）、或 Pipeline 联调后写回 PRD、执行 meeting/approve/digest/resync/check-config 时触发",
-      "version": "0.4.0",
+      "description": "整理联调消息写回PRD：企微联调群消息→摘要→对照PRD找出入拟修正→dry-run预览→人工对话确认后才写飞书PRD；亦含会议纪要meeting、approve、resync",
+      "version": "0.4.1",
       "category": "req-to-dev",
       "tags": [
         "collab",
         "prd",
         "feishu",
         "lark-cli",
-        "wechat"
+        "wechat",
+        "digest",
+        "联调",
+        "企微"
+      ],
+      "trigger_phrases": [
+        "整理联调消息写回 PRD",
+        "整理联调写回 PRD",
+        "整理联调消息",
+        "联调共识写回 PRD",
+        "联调写回 PRD",
+        "企微消息整理",
+        "企微联调写回 PRD",
+        "根据会议纪要更新 PRD",
+        "prd resync"
       ],
       "entry": "skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md"
     },

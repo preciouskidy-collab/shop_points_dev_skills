@@ -27,6 +27,7 @@ class Skill:
         self.version = config['version']
         self.category = config['category']
         self.tags = config.get('tags', [])
+        self.trigger_phrases = config.get('trigger_phrases', [])
         self.entry = base_path / config['entry']
         self.commands = config.get('commands', [])
         self.references = [base_path / ref for ref in config.get('references', [])]
@@ -118,8 +119,16 @@ class SkillsLoader:
         """搜索 skills"""
         results = []
         for skill in self.skills.values():
-            if query and query.lower() not in skill.name.lower() and query.lower() not in skill.description.lower():
-                continue
+            if query:
+                q = query.lower()
+                haystack = ' '.join([
+                    skill.name,
+                    skill.description,
+                    ' '.join(skill.tags),
+                    ' '.join(skill.trigger_phrases),
+                ]).lower()
+                if q not in haystack:
+                    continue
             if category and skill.category != category:
                 continue
             if tag and tag not in skill.tags:

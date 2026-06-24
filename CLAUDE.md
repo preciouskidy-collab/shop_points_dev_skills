@@ -170,7 +170,20 @@ python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py 
 
 会议纪要 → PRD（无 req_id）→ `approve` → **此后** `run_workflow init` 才产生 req_id。
 
-详见 `skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md`、`AGENTS.md`。
+---
+
+## 联调群 → PRD（collab-prd-sync · 链路 2）
+
+**「整理联调消息写回 PRD」** = 企微联调群消息 → **摘要** → **对照 PRD 找出入、拟修正** → dry-run 预览 → **人工对话确认** → 才写飞书 PRD（不是 digest 跑完就写回）。
+
+### Agent 流程
+
+1. `digest --req-id <id>` 拉群消息 + 生成 draft patch
+2. 读 `digest_prompt.md` + `request/prd.md`，向用户说明联调共识与 PRD 差异
+3. **等待** PM 在对话确认：`确认 patch-NNN <nonce> approver <姓名>`
+4. 用户确认后 `approve --chat-confirm "<原话>"` → **自动 resync**
+
+详见 `skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md`。
 
 ---
 

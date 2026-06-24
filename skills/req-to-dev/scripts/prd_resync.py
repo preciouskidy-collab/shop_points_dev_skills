@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 _LIB = Path(__file__).resolve().parent / "lib"
 sys.path.insert(0, str(_LIB))
@@ -46,40 +47,32 @@ def _append_spec(spec_path: Path, patch_id: str, note: str) -> None:
         spec_path.write_text(f"# Spec\n{block}", encoding="utf-8")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="PRD resync")
-    parser.add_argument("--req-id", required=True)
-    parser.add_argument("--patch", default=None, help="默认取最新 ready_for_resync 的 patch")
-    args = parser.parse_args()
-
-    change_dir = find_change_dir(args.req_id)
-    state = load_state(change_dir)
-    req_id = state.get("req_id", args.req_id)
-    prd_url = state.get("trigger", {}).get("url")
-    if not prd_url:
-        print("ERROR: pipeline_state.trigger.url 缺失", file=sys.stderr)
-        return 1
-
-    collab_dir = change_dir / "collaboration"
-    patch_id = args.patch
-    meta = None
+def _resolve_patch_meta(collab_dir: Path, patch_id: str | None) -> tuple[str, dict]:
     if patch_id:
         meta_path = collab_dir / patch_id / "meta.json"
         if not meta_path.exists():
-            print(f"ERROR: patch 不存在: {patch_id}", file=sys.stderr)
-            return 1
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    else:
-        candidates = sorted(collab_dir.glob("patch-*/meta.json"), reverse=True)
-        for mp in candidates:
-            m = json.loads(mp.read_text(encoding="utf-8"))
-            if m.get("ready_for_resync"):
-                meta = m
-                patch_id = m["patch_id"]
-                break
-        if meta is None:
-            print("ERROR: 无 ready_for_resync 的 patch", file=sys.stderr)
-            return 1
+            raise FileNotFoundError(f"patch 不存在: {patch_id}")
+        return patch_id, json.loads(meta_path.read_text(encoding="utf-8"))
+
+    candidates = sorted(collab_dir.glob("patch-*/meta.json"), reverse=True)
+    for mp in candidates:
+        m = json.loads(mp.read_text(encoding="utf-8"))
+        if m.get("ready_for_resync"):
+            return m["patch_id"], m
+    raise RuntimeError("无 ready_for_resync 的 patch")
+
+
+def run_prd_resync(
+    change_dir: Path,
+    state: dict,
+    *,
+    req_id: str,
+    prd_url: str,
+    patch_id: str | None = None,
+) -> dict[str, Any]:
+    """执行 PRD 回灌，返回摘要信息供调用方打印。"""
+    collab_dir = change_dir / "collaboration"
+    patch_id, meta = _resolve_patch_meta(collab_dir, patch_id)
 
     prd_path = change_dir / "request" / "prd.md"
     old_text = prd_path.read_text(encoding="utf-8") if prd_path.exists() else ""
@@ -89,7 +82,6 @@ def main() -> int:
 
     plan_path = collab_dir / patch_id / "plan.json"
     plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {"changes": []}
-    note = (collab_dir / patch_id / "meta.json")
     approval_note = meta.get("approval_note", "") if meta else ""
 
     _append_tasks(change_dir / "request" / "tasks.md", patch_id, plan)
@@ -134,11 +126,45 @@ def main() -> int:
     save_state(change_dir, state)
     append_log(change_dir, f"COLLAB prd_resync {patch_id} tier={tier} resume={resume_stage}")
 
-    print(f"✓ refetch {prd_path}")
-    print(f"✓ Tier-{tier}: 已更新 spec/tasks")
-    if handoff_stale:
+    return {
+        "patch_id": patch_id,
+        "tier": tier,
+        "prd_path": str(prd_path),
+        "resume_stage": resume_stage,
+        "handoff_stale": handoff_stale,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="PRD resync")
+    parser.add_argument("--req-id", required=True)
+    parser.add_argument("--patch", default=None, help="默认取最新 ready_for_resync 的 patch")
+    args = parser.parse_args()
+
+    try:
+        change_dir = find_change_dir(args.req_id)
+        state = load_state(change_dir)
+        req_id = state.get("req_id", args.req_id)
+        prd_url = state.get("trigger", {}).get("url")
+        if not prd_url:
+            print("ERROR: pipeline_state.trigger.url 缺失", file=sys.stderr)
+            return 1
+
+        result = run_prd_resync(
+            change_dir, state, req_id=req_id, prd_url=prd_url, patch_id=args.patch
+        )
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    print(f"✓ refetch {result['prd_path']}")
+    print(f"✓ Tier-{result['tier']}: 已更新 spec/tasks")
+    if result["handoff_stale"]:
         print("⚠ handoff 可能过期，请视情况补跑 frontend-handoff")
-    print(f"✓ resume_stage: {resume_stage} (current_stage 未改变)")
+    print(f"✓ resume_stage: {result['resume_stage']} (current_stage 未改变)")
     print("下一步: 按 tasks.md 继续当前阶段，完成后 run_workflow.py advance")
     return 0
 

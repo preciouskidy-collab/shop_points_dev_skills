@@ -13,38 +13,34 @@ git clone https://git.lianjia.com/qidi002/shop_points_dev_skills.git
 
 无第三方依赖，所有 Python 脚本仅使用标准库，克隆即可用。
 
-### 第二步：安装 Skills 到 Claude Code
+### 第二步：安装 Skills 到 Claude Code / Cursor
 
-Claude Code 的 `Skill` 工具只识别特定目录下的 SKILL.md：
+Claude Code 的 `Skill` 工具只识别特定目录下的 SKILL.md；**Cursor** 同样需链接到 `~/.cursor/skills/`：
 
-| 位置 | 路径 | 作用域 |
-|------|------|--------|
-| 个人级 | `~/.claude/skills/<skill-name>/SKILL.md` | 你所有项目通用 |
-| 项目级 | `<项目>/.claude/skills/<skill-name>/SKILL.md` | 仅当前项目 |
-
-需要将本仓库的 skill 目录**复制或符号链接**到上述位置，Claude Code 才能通过 `/skill-name` 或自动匹配触发。
+| 工具 | 个人级路径 |
+|------|------------|
+| Claude Code | `~/.claude/skills/<skill-name>/SKILL.md` |
+| Cursor | `~/.cursor/skills/<skill-name>/SKILL.md` |
 
 #### 方式 A：个人级安装（推荐）
 
-所有项目都能使用，一条命令安装全部：
-
 ```bash
 SKILLS_SRC="/Users/yourname/mcc/shop_points_dev_skills/skills"
-SKILLS_DST="$HOME/.claude/skills"
+mkdir -p "$HOME/.claude/skills" "$HOME/.cursor/skills"
 
-# 创建目录（首次）
-mkdir -p "$SKILLS_DST"
+ln -sf "$SKILLS_SRC/req-to-dev" "$HOME/.claude/skills/req-to-dev"
+ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/feishu-doc-fetcher" "$HOME/.claude/skills/feishu-doc-fetcher"
+ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/collab-prd-sync" "$HOME/.claude/skills/collab-prd-sync"
+ln -sf "$SKILLS_SRC/common/skill-creator" "$HOME/.claude/skills/skill-creator"
 
-# 符号链接 skill
-ln -sf "$SKILLS_SRC/req-to-dev" "$SKILLS_DST/req-to-dev"
-ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/feishu-doc-fetcher" "$SKILLS_DST/feishu-doc-fetcher"
-ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/collab-prd-sync" "$SKILLS_DST/collab-prd-sync"
-ln -sf "$SKILLS_SRC/common/skill-creator" "$SKILLS_DST/skill-creator"
+# Cursor（与 Claude 相同 skill 目录结构）
+ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/collab-prd-sync" "$HOME/.cursor/skills/collab-prd-sync"
+ln -sf "$SKILLS_SRC/req-to-dev/sub_skills/feishu-doc-fetcher" "$HOME/.cursor/skills/feishu-doc-fetcher"
 ```
 
-> **注意**：将 `SKILLS_SRC` 替换为你实际的克隆路径。
+> 将 `SKILLS_SRC` 换成本仓库实际路径。安装后**重启 IDE / Claude Code**。
 
-安装后**重启 Claude Code**（首次创建 `~/.claude/skills/` 需重启才能生效）。
+在 **shop_points_dev_skills 根目录**打开 Cursor 时，还会自动加载 `.cursor/rules/collab-prd-sync.mdc`（识别「整理联调消息写回 PRD」等说法）。
 
 #### 方式 B：项目级安装
 
@@ -141,7 +137,8 @@ AI IDE（Claude Code、Trae、Cursor 等）通过匹配 SKILL.md 的 `descriptio
 
 | 触发语句 | 说明 |
 |---------|------|
-| `整理联调消息写回 PRD，req_id xxx` | 链路 2 · digest |
+| `整理联调消息写回 PRD` | 链路 2 · **完整流程**：digest → 摘要+PRD差异说明 → **人工确认** → approve 写 PRD |
+| `整理联调写回 PRD` / `企微消息整理` / `联调共识写回 PRD` | 同上 |
 | `根据这份会议纪要更新 PRD` + wiki 链接 | 链路 1 · meeting |
 | `审批 patch-001 写回 PRD` | 交互式 approve（终端 y） |
 | `PRD 已更新，帮我 prd resync` | 增量回灌 spec/tasks |

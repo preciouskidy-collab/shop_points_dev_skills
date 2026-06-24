@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同目录 import
 from collab_check_config import _print_report, run_check  # noqa: E402
 from collab_common import append_log, find_change_dir, iso_now, load_state, normalize_feishu_url, save_state  # noqa: E402
 from lark_cli import _plan_fingerprint, apply_prd  # noqa: E402
+from patch_builder import parse_chat_confirm_phrase  # noqa: E402
+from prd_resync import run_prd_resync  # noqa: E402
 from prd_sync_session import append_session_log, resolve_pre_pipeline_patch, save_session  # noqa: E402
 
 _CONFIRM_WORDS = ("确认", "同意", "approve", "可写回", "可以写回", "继续写回")
@@ -307,18 +309,54 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
     append_log(change_dir, f"COLLAB approve {args.patch} mode={args.mode} approver={args.approver}")
 
     print("✅ PRD 已更新")
-    print(f"下一步: python3 prd_resync.py --req-id {req_id}")
+    if not args.skip_resync:
+        print(f"\n正在自动 prd resync · {args.patch} ...")
+        try:
+            result = run_prd_resync(
+                change_dir,
+                state,
+                req_id=req_id,
+                prd_url=prd_url,
+                patch_id=args.patch,
+            )
+            print(f"✅ prd resync 完成 · Tier-{result['tier']} · patch {result['patch_id']}")
+            if result["handoff_stale"]:
+                print("⚠ handoff 可能过期，请视情况补跑 frontend-handoff")
+            print(f"✓ resume_stage: {result['resume_stage']} (current_stage 未改变)")
+        except Exception as e:
+            print(f"ERROR: 自动 resync 失败: {e}", file=sys.stderr)
+            print(f"请手动: python3 prd_resync.py --req-id {req_id} --patch {args.patch}", file=sys.stderr)
+            return 1
+    else:
+        print(f"下一步: python3 prd_resync.py --req-id {req_id} --patch {args.patch}")
     return 0
+
+
+def _apply_chat_confirm_args(args: argparse.Namespace) -> None:
+    if not args.chat_confirm:
+        return
+    parsed = parse_chat_confirm_phrase(args.chat_confirm)
+    if not parsed:
+        return
+    if not args.patch:
+        args.patch = parsed["patch"]
+    if not args.approver:
+        args.approver = parsed["approver"]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="PRD 写回确认（默认 Agent 聊天交互）")
-    parser.add_argument("--patch", required=True)
-    parser.add_argument("--approver", required=True)
+    parser.add_argument("--patch", default=None)
+    parser.add_argument("--approver", default=None)
     parser.add_argument("--req-id", default=None)
     parser.add_argument("--prd-url", default=None)
     parser.add_argument("--note", default="")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--skip-resync",
+        action="store_true",
+        help="链路 2 approve 成功后不自动 prd resync（默认自动 resync）",
+    )
     parser.add_argument(
         "--mode",
         choices=("agent-chat", "terminal"),
@@ -340,6 +378,15 @@ def main() -> int:
         help="跳过凭证 / 权限预检（调试用）",
     )
     args = parser.parse_args()
+    _apply_chat_confirm_args(args)
+
+    if not args.patch or not args.approver:
+        print(
+            "ERROR: 需要 --patch 与 --approver，或在 --chat-confirm 中使用"
+            "「确认 patch-NNN <nonce> approver <姓名>」格式",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.prd_url and args.req_id:
         print("ERROR: --prd-url 与 --req-id 二选一", file=sys.stderr)
