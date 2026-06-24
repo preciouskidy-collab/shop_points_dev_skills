@@ -12,6 +12,8 @@
 6. **关键技术选型** — 决策点与理由
 7. **风险与注意事项** — 已知风险及应对
 
+> **v0.6**：`handoff/api-contract.yaml` 由独立阶段 `api-contract` 产出；`frontend-design.md` 由 `frontend-design` 阶段产出。本文件仅描述**后端实现方案**，须与已定义契约一致，不得擅自改字段语义。
+
 ## 各章节要求
 
 ### 需求概述

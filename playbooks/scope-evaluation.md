@@ -38,6 +38,7 @@ commands: []
 ```markdown
 ---
 frontend_scope: full | partial | none
+api_change: none | extend | new
 mall_scope: full | partial | none
 surfaces: [h5, pc]
 deploy_modules:
@@ -69,7 +70,8 @@ deploy_modules:
 
 | 字段 | 取值 | 说明 |
 |------|------|------|
-| `frontend_scope` | `full` / `partial` / `none` | `none` 时跳过前端交接、编码、审查、E2E |
+| `frontend_scope` | `full` / `partial` / `none` | `none` 时跳过前端编码、契约对齐、审查、E2E |
+| `api_change` | `none` / `extend` / `new` | `none` 时跳过 `api-contract` 阶段 |
 | `mall_scope` | `full` / `partial` / `none` | `none` 时 `deploy_modules` 不含 lottery |
 | `surfaces` | `[h5]`, `[pc]`, `[h5, pc]` | 涉及的前端端 |
 | `deploy_modules` | 大禹模块名列表 | 决定 dayu-deploy 部署哪些项目 |

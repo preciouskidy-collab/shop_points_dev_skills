@@ -1,0 +1,24 @@
+# API 契约草案（api-contract 阶段产出，plan-approve 审批后冻结）
+# 路径: changes/{req_id}/handoff/api-contract.yaml
+
+version: draft
+change_id: "{req_id}"
+api_change: extend  # none | extend | new — 与 impact.md frontmatter 一致
+
+apis:
+  - id: example-endpoint
+    method: GET
+    path: /api/v1/example
+    change: extend  # none | extend | new
+  #   summary: 接口说明
+  #   request: {}
+  #   response:
+  #     data: {}
+  #   errors: []
+  #   compatibility: 老字段兼容说明
+
+e2e_cases: []
+#  - id: E2E-01
+#    surface: h5
+#    steps: []
+#    expected: ""

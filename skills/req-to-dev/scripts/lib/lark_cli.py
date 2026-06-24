@@ -8,16 +8,15 @@ import subprocess
 from pathlib import Path
 
 from collab_common import CONFIG_DIR, project_root
+from local_config import ensure_lark_cli_config, lark_cli_subprocess_env, load_secrets
 
 
 def load_lark_config() -> dict:
-    secrets = CONFIG_DIR / "secrets.local.json"
-    if secrets.exists():
-        data = json.loads(secrets.read_text(encoding="utf-8"))
-        if "lark_cli" in data:
-            return data["lark_cli"]
+    data = load_secrets()
+    if "lark_cli" in data:
+        return data["lark_cli"]
 
-    for name in ("agent.yaml", "agent.local.yaml"):
+    for name in ("agent.yaml.example", "agent.local.yaml", "agent.yaml"):
         p = CONFIG_DIR / name
         if not p.exists():
             continue
@@ -43,17 +42,23 @@ def resolve_binary(cfg: dict | None = None) -> str:
     raise RuntimeError(
         f"未找到 lark-cli: {binary}\n"
         "请执行: npm install -g @larksuite/cli\n"
-        "并配置: lark-cli config init --app-id <id> --app-secret-stdin"
+        f"并配置 secrets.local.json 中 feishu 段，或运行: bash skills/req-to-dev/scripts/setup_lark_cli.sh"
     )
 
 
 def _run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    try:
+        ensure_lark_cli_config()
+        env = lark_cli_subprocess_env()
+    except RuntimeError:
+        env = None
     return subprocess.run(
         args,
         cwd=str(cwd) if cwd else None,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
 
 

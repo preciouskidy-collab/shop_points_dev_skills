@@ -483,10 +483,13 @@ _COLOR_TO = re.compile(
 
 
 def _filter_chat_messages(messages: list[dict]) -> list[str]:
+    from collab_message_enricher import message_display_content, message_raw_content  # noqa: WPS433
+
     texts: list[str] = []
     for m in messages:
-        content = (m.get("content") or m.get("message_content") or "").strip()
-        if not content or content.startswith("/"):
+        content = message_display_content(m)
+        raw = message_raw_content(m)
+        if not content or (raw.startswith("/") and not content.startswith("[图片")):
             continue
         if _NOISE.match(content):
             continue
@@ -751,26 +754,38 @@ def build_collab_plan_heuristic(
     )
 
 
-_COLLAB_LLM_SYSTEM = """你是 PRD 维护助手。根据企微联调群聊天记录与飞书 PRD 正文：
-1. 忽略 OK/好的/收到等确认语与重复扯皮，凝练「联调共识」摘要（markdown 列表）
-2. 对照 PRD，找出与共识不一致或 PRD 未写清之处
-3. 优先输出可在 PRD 中精确 str_replace 的修订（pattern 必须是 PRD 中存在的完整一行原文）
+def _collab_llm_system() -> str:
+    from sender_roles import format_sender_roles_legend  # noqa: WPS433
+
+    legend = format_sender_roles_legend()
+    return f"""你是 PRD 维护助手。根据企微联调群聊天记录与飞书 PRD 正文：
+1. 消息发送方已标注角色（方括号内），请按角色理解发言权重：
+   - PM：产品决策、验收口径、文案与交互定稿优先采信
+   - RD / RD负责人 / RDLeader：技术实现、接口字段、兼容性说明
+   - FE：前端展示、交互细节、联调现象
+2. 忽略 OK/好的/收到等确认语与重复扯皮，凝练「联调共识」摘要（markdown 列表）
+3. 消息中的 [图片] 段落含「视觉描述」，请将其与文字消息一并纳入共识（文案、颜色、布局等）
+4. 对照 PRD，找出与共识不一致或 PRD 未写清之处
+5. 优先输出可在 PRD 中精确 str_replace 的修订（pattern 必须是 PRD 中存在的完整一行原文）
+
+角色映射表：
+{legend}
 
 输出严格 JSON：
-{
+{{
   "consensus_summary": "- 要点1\\n- 要点2",
   "prd_diff_summary": "- PRD 差异说明（markdown 列表）",
   "changes": [
-    {
+    {{
       "summary": "变更说明",
-      "update": {
+      "update": {{
         "command": "str_replace",
         "pattern": "PRD 中要替换的整行原文",
         "content": "替换后的整行"
-      }
-    }
+      }}
+    }}
   ]
-}
+}}
 
 若无法 str_replace，changes 可为空，但 consensus_summary 与 prd_diff_summary 必须填写。"""
 
@@ -785,8 +800,9 @@ def build_collab_plan(
 ) -> tuple[dict, str]:
     """返回 (plan, plan_source_label)。"""
     from llm_client import chat_completion_json, is_llm_available, load_llm_config  # noqa: WPS433
+    from sender_roles import format_collab_messages_md  # noqa: WPS433
 
-    raw_md = _format_collab_messages_md(messages)
+    raw_md = format_collab_messages_md(messages)
     cfg = load_llm_config()
 
     if use_llm and is_llm_available(cfg):
@@ -803,7 +819,7 @@ def build_collab_plan(
             ]
         )
         try:
-            payload = chat_completion_json(system=_COLLAB_LLM_SYSTEM, user=user, cfg=cfg)
+            payload = chat_completion_json(system=_collab_llm_system(), user=user, cfg=cfg)
             plan = _plan_from_llm_payload(payload, prd_md=prd_md, prd_url=prd_url, patch_id=patch_id)
             return plan, "llm"
         except Exception as e:
@@ -814,16 +830,10 @@ def build_collab_plan(
 
 
 def _format_collab_messages_md(messages: list[dict]) -> str:
-    lines = []
-    for m in messages:
-        sender = m.get("senderId") or m.get("sender_id") or "unknown"
-        content = (m.get("content") or m.get("message_content") or "").strip()
-        if not content:
-            continue
-        ts = m.get("createdAt") or m.get("created_at") or ""
-        prefix = f"[{ts}] " if ts else ""
-        lines.append(f"- {prefix}[{sender}] {content}")
-    return "\n".join(lines)
+    """兼容旧 import；实现已迁至 sender_roles。"""
+    from sender_roles import format_collab_messages_md  # noqa: WPS433
+
+    return format_collab_messages_md(messages)
 
 
 def finalize_patch(

@@ -4,7 +4,7 @@ from __future__ import annotations
 """
 req-to-dev Pipeline 状态管理器
 
-管理 req-to-dev 16 阶段 pipeline 的状态流转：
+管理 req-to-dev 18 阶段 pipeline 的状态流转：
   init    — 初始化 pipeline，创建 changes 目录和状态文件
   status  — 查看当前 pipeline 进度
   advance — 推进到下一阶段（验证产出物）
@@ -62,6 +62,7 @@ def _parse_impact_meta(change_dir: Path) -> dict:
     """从 impact/impact.md 的 YAML frontmatter 解析元数据"""
     defaults = {
         "frontend_scope": "partial",
+        "api_change": "extend",
         "mall_scope": "none",
         "surfaces": ["h5", "pc"],
         "deploy_modules": ["shop-points"],
@@ -332,11 +333,28 @@ def _save_state(change_dir: Path, state: dict):
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
+def _artifact_skipped(change_dir: Path, artifact_path: str, stage: dict) -> bool:
+    """按 artifact_skip_when 判断某产出物是否不必检查。"""
+    meta = _parse_impact_meta(change_dir)
+    for rule in stage.get("artifact_skip_when") or []:
+        if rule.get("path") != artifact_path:
+            continue
+        field = rule.get("impact_field")
+        expected = rule.get("equals")
+        if field and meta.get(field) == expected:
+            return True
+    return False
+
+
 def _check_artifacts(change_dir: Path, stage: dict) -> tuple[bool, list[str]]:
     """检查阶段产出物是否存在，返回 (全部存在, 缺失列表)"""
-    if not stage["artifacts"]:
+    if not stage.get("artifacts"):
         return True, []
-    missing = [a for a in stage["artifacts"] if not (change_dir / a).exists()]
+    missing = [
+        a
+        for a in stage["artifacts"]
+        if not _artifact_skipped(change_dir, a, stage) and not (change_dir / a).exists()
+    ]
     return len(missing) == 0, missing
 
 
@@ -630,16 +648,18 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
         print("BLOCKING: 需要人工审批")
         print()
         if next_stage["id"] == "plan-approve":
-            print(">>> 请向用户展示以下内容并请求审批（进入编码）：")
-            print("    - request/spec.md              需求规格")
-            print("    - impact/impact.md             影响范围（含 Won't Do）")
-            print("    - tech-design/tech-design.md   技术方案")
+            print(">>> 请向用户展示以下内容并请求审批（协议 + 详设，进入编码）：")
+            print("    - request/spec.md                    需求规格")
+            print("    - impact/impact.md                   影响范围（api_change / frontend_scope）")
+            print("    - handoff/api-contract.yaml        API 协议（api_change≠none）")
+            print("    - tech-design/tech-design.md       后端技术方案")
+            print("    - tech-design/frontend-design.md   前端技术设计（frontend_scope≠none）")
             print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
             print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
         elif next_stage["id"] == "deploy-approve":
             print(">>> 请向用户展示以下内容并请求审批（进入部署）：")
             print("    - 各仓库 git diff 摘要（backend + frontend）")
-            print("    - handoff/frontend-handoff.md  （如有前端）")
+            print("    - handoff/frontend-handoff.md + handoff/contract-verify-report.md  （如有前端）")
             print("    - impact/impact.md → deploy_modules 列表")
             print("    - review/backend_review_v1.md + review/frontend_review_v1.md")
             print()
@@ -734,7 +754,7 @@ def cmd_reject(args):
     print(f"🔄 审批驳回: {args.reason}")
     print(f"   回退阶段: {' → '.join(feedback_stages)}")
     print()
-    print(">>> AGENT: 根据 feedback 重新执行 scope-eval → tech-design")
+    print(">>> AGENT: 根据 feedback 重新执行 scope-eval → api-contract → tech-design → frontend-design")
     print(f">>> 完成后运行: python3 {sys.argv[0]} advance --name {args.name}")
 
 

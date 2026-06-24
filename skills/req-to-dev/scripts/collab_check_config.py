@@ -33,11 +33,13 @@ sys.path.insert(0, str(_LIB))
 sys.path.insert(0, str(_FEISHU_FETCHER))
 
 from lark_cli import _update as lark_update, check_available  # noqa: E402
+from local_config import feishu_config_path, resolve_feishu_credentials  # noqa: E402
 from feishu_fetcher import (  # noqa: E402
-    CONFIG_PATH,
     FeishuAPIClient,
     TokenManager,
 )
+
+CONFIG_PATH = feishu_config_path()
 
 
 DEFAULT_URL = "https://beike.feishu.cn/wiki/CKFdwt35oitbqPkU690cVMnln3g"
@@ -122,15 +124,20 @@ def _classify_http_error(e: HTTPError, method: str) -> dict:
 
 def _check_missing(result: CheckResult) -> bool:
     result.config_path = str(CONFIG_PATH)
-    result.config_exists = CONFIG_PATH.exists()
-    if not result.config_exists:
-        result.ok = False
-    else:
+    app_id, app_secret = resolve_feishu_credentials()
+    result.config_exists = bool(app_id and app_secret) or CONFIG_PATH.exists()
+    if app_id:
+        result.app_id_masked = _mask_app_id(app_id)
+    elif CONFIG_PATH.exists():
         try:
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            result.app_id_masked = _mask_app_id((data.get("app_id") or "").strip())
+            feishu = data.get("feishu") or {}
+            legacy_id = (data.get("app_id") or feishu.get("app_id") or "").strip()
+            result.app_id_masked = _mask_app_id(legacy_id)
         except (json.JSONDecodeError, OSError) as e:
             result.app_id_masked = f"<parse error: {e}>"
+    else:
+        result.ok = False
 
     result.lark_cli_ok, result.lark_cli_path = check_available()
     if not result.lark_cli_ok:
@@ -335,17 +342,9 @@ def run_check(
     if not _check_missing(result):
         return result
 
-    try:
-        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        app_id = (data.get("app_id") or "").strip()
-        app_secret = (data.get("app_secret") or "").strip()
-    except (json.JSONDecodeError, OSError) as e:
-        result.token_error = f"读取凭证失败: {e}"
-        result.ok = False
-        return result
-
+    app_id, app_secret = resolve_feishu_credentials()
     if not app_id or not app_secret:
-        result.token_error = "凭证文件缺少 app_id / app_secret"
+        result.token_error = "secrets.local.json 缺少 feishu.app_id / feishu.app_secret"
         result.ok = False
         return result
 
@@ -365,7 +364,7 @@ def _print_report(result: CheckResult) -> None:
         print(f"  ✓ 凭证文件 {result.config_path} 存在 (app_id={result.app_id_masked})")
     else:
         print(f"  ✗ 凭证文件 {result.config_path} 不存在")
-        print("    提示: 请向用户询问 app_id / app_secret 并写入该路径")
+        print("    提示: 复制 secrets.local.json.example 为 secrets.local.json 并填写 feishu 段")
 
     if result.lark_cli_ok:
         print(f"  ✓ lark-cli: {result.lark_cli_path}")

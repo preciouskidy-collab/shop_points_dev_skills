@@ -6,15 +6,33 @@ agent:
 
 # lark-cli（联调 PRD 读写）
 # 安装: npm install -g @larksuite/cli
-# 配置: 见 scripts/setup_lark_cli.sh（读取 ~/.shop-points-dev-skills/feishu-config.json）
+# 配置: 见 scripts/setup_lark_cli.sh（读取 skills/req-to-dev/config/secrets.local.json）
 lark_cli:
   binary: "lark-cli"          # 或 /opt/homebrew/bin/lark-cli
   fetch_format: "pretty"      # pretty | json
+  profile: "shop-points-dev"
 
 # 联调 digest：AI 摘要群消息并对照 PRD（OpenAI 兼容接口）
 llm:
   enabled: true
   base_url: "https://api.openai.com/v1"
   api_key: ""                 # 或环境变量 OPENAI_API_KEY
-  model: "gpt-4o-mini"
+  model: "Deepseek-V4-Pro"      # 纪要/联调文本摘要
+  vision_model: "MiniMax-M3"    # 联调群图片多模态分析
   timeout_sec: 120
+
+# 联调群消息 sender 系统号 → 角色（digest 摘要权重）
+collab:
+  sender_roles:
+    "31449898": RD           # 后端研发
+    "31175736": FE           # 前端研发
+    "29198147": PM           # 产品经理
+    "26670281": RD负责人      # 后端负责人
+    "20233755": RDLeader     # 研发负责人
+  chatarchive:
+    base_url: "http://app-center-wekehome-manager.ttb.test.ke.com"
+    corp_name: "bei_ke"
+    biz_code: "group-operation"
+    app_id: "group-operation"
+    secret: ""                # 在 secrets.local.json 填写
+    timeout_sec: 60

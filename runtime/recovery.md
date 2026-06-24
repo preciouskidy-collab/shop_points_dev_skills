@@ -10,11 +10,14 @@
 | fetch-prd | 飞书配置缺失（`feishu_config_required`） | 向用户索取 app-id/app-secret 后重试 | — |
 | break-down | 需求不明确 | 标记阻塞，通知人工补充 PRD 信息 | 0 |
 | scope-eval | 影响面超出预期 | 标记风险，仍产出 impact.md 进入下一阶段 | 0 |
+| api-contract | 契约与 PRD 冲突 | 修订 api-contract.yaml，必要时回退 scope-eval | 0 |
 | tech-design | 方案无法覆盖全部需求 | 标记待确认项，仍产出 tech-design.md 进入审批 | 0 |
+| frontend-design | 契约缺少 api id | 先补 api-contract，再重做 frontend-design | 0 |
 | backend-coding | `mvn compile` 失败 | Agent 自修编译错误，重跑 compile | 3 |
 | backend-coding | Guardrails 违规（分层/幂等/分片键） | Agent 自动修正，重跑 compile | 3（共享重试上限） |
-| frontend-handoff | FDH 与后端代码不一致 | Agent 对照 diff 修正 FDH | 2 |
-| frontend-handoff | 前端已开始但 FDH 缺失 | 阻塞，先补 FDH 再 frontend-coding | — |
+| frontend-handoff | FDH 与后端代码不一致 | Agent 对照 diff 修正 FDH / verify 报告 | 2 |
+| frontend-handoff | 契约与代码 drift | 更新 contract-verify-report，修订 api-contract 或代码 | 2 |
+| frontend-handoff | 前端已开始但 verify 缺失 | 阻塞，先补 contract-verify 再 review | — |
 | frontend-coding | build 失败 | Agent 自修，重跑 build | 3 |
 | frontend-coding | 偏离 FDH 范围 | 按 FDH 修正，重跑 | 3 |
 | backend-review | MUST FIX 问题 | Agent 按审查意见修复，重跑审查 | 2 |
@@ -43,10 +46,10 @@ Pipeline 中有 **两个阻塞点**（均必须人工）：
 
 | 节点 | 触发条件 | 审批内容 | 操作 |
 |------|----------|----------|------|
-| plan-approve | 必经 | spec.md + impact.md + tech-design.md | 通过 → backend-coding / 驳回 → 回退 scope-eval |
+| plan-approve | 必经 | spec + impact + api-contract + tech-design + frontend-design | 通过 → backend-coding / 驳回 → scope-eval |
 | deploy-approve | 必经 | 各仓 diff + FDH + deploy_modules + 审查报告 | 通过 → commit-push / 拒绝 → 终止或人工修复 |
 
-驳回时运行 `run_workflow.py reject --reason "<修改意见>"`，Pipeline 回退到 scope-eval 重新执行 scope-eval → tech-design → plan-approve。
+驳回时运行 `run_workflow.py reject --reason "<修改意见>"`，Pipeline 回退到 scope-eval，重新执行 scope-eval → api-contract → tech-design → frontend-design → plan-approve。
 
 ## 状态流转
 

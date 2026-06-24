@@ -29,6 +29,7 @@ def main() -> int:
     p_digest = sub.add_parser("digest", help="企微联调群消息 → PRD digest（dry-run）")
     p_digest.add_argument("--req-id", required=True)
     p_digest.add_argument("--window", default="48h")
+    p_digest.add_argument("--no-images", action="store_true", help="跳过 image 解析与视觉分析")
     p_digest.add_argument("--no-llm", action="store_true", help="禁用 LLM，使用启发式")
 
     p_meeting = sub.add_parser("meeting", help="会议纪要 → PRD（pre-pipeline，无需 req_id）")
@@ -87,6 +88,8 @@ def main() -> int:
         digest_argv = ["--req-id", args.req_id, "--window", args.window]
         if args.no_llm:
             digest_argv.append("--no-llm")
+        if getattr(args, "no_images", False):
+            digest_argv.append("--no-images")
         return _run("collab_digest.py", digest_argv)
     if args.command == "meeting":
         meeting_argv = ["--meeting-url", args.meeting_url, "--prd-url", args.prd_url]

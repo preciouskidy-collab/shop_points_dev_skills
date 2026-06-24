@@ -45,8 +45,10 @@ out/
 # Pipeline 运行时产出
 changes/
 
-# Pipeline 本地凭证（含大禹/测试环境账号）
+# Pipeline 本地凭证（含大禹/测试环境/飞书/lark-cli/LLM）
 skills/req-to-dev/config/secrets.local.json
+skills/req-to-dev/config/agent.local.yaml
+skills/req-to-dev/config/lark-cli-home/
 
 # 临时目录
 tmp/

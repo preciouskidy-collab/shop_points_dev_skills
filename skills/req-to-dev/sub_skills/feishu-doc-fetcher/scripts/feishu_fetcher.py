@@ -2,7 +2,7 @@
 """
 飞书文档获取器
 直连飞书开放平台 API，使用 tenant_access_token 获取文档内容并下载图片到本地。
-应用凭证从本地配置文件 ~/.shop-points-dev-skills/feishu-config.json 读取，不存入代码库。
+应用凭证从项目内 skills/req-to-dev/config/secrets.local.json 读取（gitignore），不存入代码库。
 """
 
 import re
@@ -22,7 +22,14 @@ from urllib.parse import quote
 # ── 配置 ──────────────────────────────────────────────
 
 FEISHU_BASE = "https://open.feishu.cn"
-CONFIG_PATH = Path.home() / ".shop-points-dev-skills" / "feishu-config.json"
+_LIB = Path(__file__).resolve().parents[3] / "scripts" / "lib"
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+from local_config import (  # noqa: E402
+    feishu_config_path,
+    resolve_feishu_credentials,
+)
+CONFIG_PATH = feishu_config_path()
 
 
 # ── 数据类 ────────────────────────────────────────────
@@ -45,24 +52,12 @@ class CredentialManager:
     def load(app_id: str = "", app_secret: str = "") -> Tuple[str, str]:
         """
         读取凭证，返回 (app_id, app_secret)。
-        优先使用传入参数，其次读取配置文件。
-        如果传入了凭证且配置文件不存在，自动保存到配置文件。
+        优先使用传入参数，其次读取项目内 secrets.local.json。
+        如果传入了凭证且配置文件不存在，自动保存到 secrets.local.json。
         """
-        # 传入参数优先
-        if app_id and app_secret:
-            CredentialManager.save(app_id, app_secret)
-            return app_id, app_secret
-
-        # 读取配置文件
-        if CONFIG_PATH.exists():
-            try:
-                data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-                file_id = data.get("app_id", "").strip()
-                file_secret = data.get("app_secret", "").strip()
-                if file_id and file_secret and not file_id.startswith("你的"):
-                    return file_id, file_secret
-            except json.JSONDecodeError:
-                pass
+        resolved_id, resolved_secret = resolve_feishu_credentials(app_id, app_secret)
+        if resolved_id and resolved_secret:
+            return resolved_id, resolved_secret
 
         # 凭证缺失，输出引导信息
         print(json.dumps({
@@ -70,10 +65,10 @@ class CredentialManager:
             "message": "需要飞书应用凭证才能获取文档",
             "config_path": str(CONFIG_PATH),
             "steps": [
-                f"1. 在飞书开放平台 (https://open.feishu.cn) 创建应用",
-                f"2. 开通权限: docx:document:readonly, wiki:wiki:readonly, im:resource",
-                f"3. 将知识库授权给该应用",
-                f"4. 提供应用的 App ID 和 App Secret",
+                f"1. 复制 skills/req-to-dev/config/secrets.local.json.example 为 secrets.local.json",
+                f"2. 在飞书开放平台 (https://open.feishu.cn) 创建应用，填写 feishu.app_id / feishu.app_secret",
+                f"3. 开通权限: docx:document:readonly, wiki:wiki:readonly, im:resource",
+                f"4. 将知识库授权给该应用",
             ],
             "hint": "请向用户询问 app_id 和 app_secret，然后通过 --app-id 和 --app-secret 参数传入",
         }, ensure_ascii=False, indent=2))
@@ -81,14 +76,9 @@ class CredentialManager:
 
     @staticmethod
     def save(app_id: str, app_secret: str):
-        """保存凭证到配置文件"""
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        config = {"app_id": app_id, "app_secret": app_secret}
-        CONFIG_PATH.write_text(
-            json.dumps(config, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        print(f"✓ 凭证已保存到 {CONFIG_PATH}", file=sys.stderr)
+        """保存凭证到项目内 secrets.local.json"""
+        resolve_feishu_credentials(app_id, app_secret)
+        print(f"✓ 凭证已保存到 {CONFIG_PATH}（feishu 段）", file=sys.stderr)
 
 
 # ── Token 管理 ────────────────────────────────────────

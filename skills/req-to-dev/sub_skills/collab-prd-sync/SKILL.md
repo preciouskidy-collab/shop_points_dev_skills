@@ -119,8 +119,9 @@ python3 skills/req-to-dev/scripts/run_workflow.py init \
 
 `digest` 流程（**不会**把原始群消息 append 到 PRD）：
 
-1. 拉 Agent 联调群消息 → `messages_raw.md`
-2. **AI 摘要**联调共识（`collab_summary.md`；配置 `llm.api_key`，否则启发式）
+1. 拉 Agent 联调群消息 → `messages_raw.md`（消息按 **sender 系统号 → 角色** 标注）
+2. **image 消息**：用 `md5sum` 调 wekehome `getFileMd5` 换 `signUrl` → 下载到 `patch/images/` → **视觉模型描述**（不再把 md5 JSON 当正文）
+3. **AI 摘要**联调共识（`collab_summary.md`；配置 `llm.api_key`，否则启发式）
 3. **对照 PRD** 生成 `str_replace` 或结构化共识 append → `plan.json`
 4. lark-cli **dry-run** → `dry_run.log`
 5. 展示 `human_summary.md` → **等 PM 对话确认** → `approve`
@@ -134,10 +135,35 @@ python3 .../collab_prd_sync.py resync --req-id <req_id>
 LLM 配置（`skills/req-to-dev/config/secrets.local.json`）：
 
 ```json
-"llm": { "api_key": "...", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini" }
+"llm": {
+  "api_key": "<网关 Key>",
+  "base_url": "https://<内网 OpenAI 兼容网关>/v1",
+  "model": "Deepseek-V4-Pro",
+  "vision_model": "MiniMax-M3"
+}
 ```
 
-或环境变量 `OPENAI_API_KEY`。无 LLM 时用启发式（颜色变更、纪要式删除规则等）。
+- **文本摘要**（纪要 / 联调）：`model` → `Deepseek-V4-Pro`
+- **图片分析**：`vision_model` → `MiniMax-M3`（须支持 `image_url` 多模态）
+- `api_key` 可写在 `secrets.local.json`，或环境变量 `OPENAI_API_KEY`（文件中留空 `""` 时读环境变量）
+- 无 key 时用启发式（颜色变更、纪要式删除规则等）；图片仅下载、不做视觉描述
+
+**发言角色映射**（digest 摘要时标注 `[RD]` / `[FE]` / `[PM]` 等，可在 `secrets.local.json` → `collab.sender_roles` 覆盖）：
+
+| 系统号 | 角色 | 说明 |
+|--------|------|------|
+| 31449898 | RD | 后端研发 |
+| 31175736 | FE | 前端研发 |
+| 29198147 | PM | 产品经理 |
+| 26670281 | RD负责人 | 后端负责人 |
+| 20233755 | RDLeader | 研发负责人 |
+
+**会话存档图片**（`message_content` 为 `{"md5sum":...}` 的 image 消息）：
+
+1. 配置 `secrets.local.json` → `collab.chatarchive.secret`（及 app_id / biz_code）
+2. digest 自动换 `signUrl`、下载图片、用 `llm.vision_model`（`MiniMax-M3`）生成视觉描述
+3. 摘要 LLM 读的是「视觉描述 + 文字」，不是 md5
+4. `--no-images` 可跳过图片解析
 
 ## 硬规则
 

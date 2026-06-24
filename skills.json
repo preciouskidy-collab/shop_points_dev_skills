@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "version": "0.4.0",
+    "version": "0.6.0",
     "name": "Shop Points 全栈 Skill 工具集",
     "description": "Shop Points 研发团队全栈 AI 辅助技能工具集（后端 + 前端 + 大禹部署 + E2E）"
   },
@@ -45,8 +45,26 @@
         "max_retries": 0
       },
       {
+        "id": "api-contract",
+        "name": "API 协议规范",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "api_change",
+          "equals": "none"
+        },
+        "artifacts": [
+          "handoff/api-contract.yaml"
+        ],
+        "resources": [
+          "playbook-api-contract",
+          "knowledge-rpc-contracts-${project}",
+          "knowledge-service-topology"
+        ],
+        "max_retries": 0
+      },
+      {
         "id": "tech-design",
-        "name": "技术方案",
+        "name": "后端技术方案",
         "blocking": false,
         "artifacts": [
           "tech-design/tech-design.md"
@@ -58,6 +76,23 @@
           "knowledge-message-bus-${project}",
           "knowledge-rpc-contracts-${project}",
           "knowledge-service-topology"
+        ],
+        "max_retries": 0
+      },
+      {
+        "id": "frontend-design",
+        "name": "前端技术设计",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "tech-design/frontend-design.md"
+        ],
+        "resources": [
+          "playbook-frontend-design",
+          "knowledge-frontend-atlas"
         ],
         "max_retries": 0
       },
@@ -82,24 +117,6 @@
         "max_retries": 3
       },
       {
-        "id": "frontend-handoff",
-        "name": "前端交接",
-        "blocking": false,
-        "skip_when": {
-          "impact_field": "frontend_scope",
-          "equals": "none"
-        },
-        "artifacts": [
-          "handoff/frontend-handoff.md",
-          "handoff/api-contract.yaml"
-        ],
-        "resources": [
-          "playbook-frontend-handoff",
-          "knowledge-frontend-atlas"
-        ],
-        "max_retries": 2
-      },
-      {
         "id": "frontend-coding",
         "name": "前端编码",
         "blocking": false,
@@ -113,6 +130,24 @@
           "knowledge-frontend-atlas"
         ],
         "max_retries": 3
+      },
+      {
+        "id": "frontend-handoff",
+        "name": "契约对齐",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "handoff/frontend-handoff.md",
+          "handoff/contract-verify-report.md"
+        ],
+        "resources": [
+          "playbook-frontend-handoff",
+          "knowledge-frontend-atlas"
+        ],
+        "max_retries": 2
       },
       {
         "id": "backend-review",
@@ -243,7 +278,7 @@
       "id": "req-to-dev",
       "name": "需求到开发",
       "description": "从飞书 PRD 到全栈开发、大禹部署、E2E 自测的端到端工作流",
-      "version": "0.4.0",
+      "version": "0.6.0",
       "category": "req-to-dev",
       "tags": [
         "workflow",
@@ -586,9 +621,33 @@
       "entry": "playbooks/git-branch-init.md"
     },
     {
+      "id": "playbook-api-contract",
+      "name": "API 协议规范",
+      "description": "scope-eval 后单独产出 handoff/api-contract.yaml 草案",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "api-contract",
+        "protocol"
+      ],
+      "entry": "playbooks/api-contract.md"
+    },
+    {
+      "id": "playbook-frontend-design",
+      "name": "前端技术设计",
+      "description": "api-contract 后产出 frontend-design.md，与后端 tech-design 逻辑并行",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "frontend",
+        "design"
+      ],
+      "entry": "playbooks/frontend-design.md"
+    },
+    {
       "id": "playbook-frontend-handoff",
       "name": "前端交接",
-      "description": "后端完成后产出 FDH 文档与 api-contract.yaml",
+      "description": "后端完成后对照已审批契约与代码 diff 产出对齐报告与 FDH",
       "version": "0.1.0",
       "category": "playbooks",
       "tags": [
@@ -600,7 +659,7 @@
     {
       "id": "playbook-frontend-coding",
       "name": "前端编码",
-      "description": "基于 FDH 修改 store-integral 或 store-integral-h5 前端代码",
+      "description": "基于 plan-approve 冻结的 api-contract 与 frontend-design 修改前端",
       "version": "0.1.0",
       "category": "playbooks",
       "tags": [
@@ -700,7 +759,7 @@
     {
       "id": "runtime-pipeline",
       "name": "Pipeline 定义",
-      "description": "req-to-dev 8 阶段自动流转配置：阶段依赖、可跳过条件、规范资源加载规则",
+      "description": "req-to-dev 18 阶段自动流转配置：协议先行、详设并行、阶段依赖、可跳过条件",
       "version": "0.1.0",
       "category": "runtime",
       "tags": [

@@ -24,12 +24,16 @@ from collab_common import (  # noqa: E402
 )
 from lark_cli import fetch, update_dry_run  # noqa: E402
 from patch_builder import (  # noqa: E402
-    _format_collab_messages_md,
     build_collab_plan,
     build_human_summary_pipeline,
     chat_confirm_phrase,
     new_approval_nonce,
 )
+from collab_message_enricher import (  # noqa: E402
+    enrich_collab_messages,
+    format_image_enrichment_report,
+)
+from sender_roles import format_collab_messages_md, format_sender_roles_legend  # noqa: E402
 from llm_client import is_llm_available  # noqa: E402
 
 
@@ -43,6 +47,11 @@ def main() -> int:
         "--no-llm",
         action="store_true",
         help="禁用 LLM，仅用启发式（颜色/删除类规则）",
+    )
+    parser.add_argument(
+        "--no-images",
+        action="store_true",
+        help="跳过 image 消息解析与视觉分析",
     )
     args = parser.parse_args()
 
@@ -70,12 +79,30 @@ def main() -> int:
     patch_id, seq = next_patch_id(change_dir, state)
     pdir = patch_dir(change_dir, patch_id)
 
+    images_dir = pdir / "images"
+    messages, image_stats = enrich_collab_messages(
+        messages,
+        images_dir=images_dir,
+        resolve_images=not args.no_images,
+        use_vision=not args.no_images and not args.no_llm,
+    )
+    if image_stats.get("image_total"):
+        print(format_image_enrichment_report(image_stats))
+    (pdir / "messages_enriched.json").write_text(
+        json.dumps(messages, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    if image_stats.get("image_total"):
+        (pdir / "image_enrichment.md").write_text(
+            format_image_enrichment_report(image_stats) + "\n", encoding="utf-8"
+        )
+
     prd_snapshot = change_dir / "request" / "prd.md"
     fetch(prd_url, prd_snapshot)
     prd_md = prd_snapshot.read_text(encoding="utf-8")
     (pdir / "prd_snapshot.md").write_text(prd_md, encoding="utf-8")
 
-    messages_md = _format_collab_messages_md(messages)
+    messages_md = format_collab_messages_md(messages)
+    roles_legend = format_sender_roles_legend()
     (pdir / "messages_raw.md").write_text(
         messages_md or "（无有效消息）\n", encoding="utf-8"
     )
@@ -108,7 +135,10 @@ def main() -> int:
                 "## PRD URL",
                 prd_url,
                 "",
-                "## 原始联调消息",
+                "## 发言角色映射",
+                roles_legend,
+                "",
+                "## 原始联调消息（已标注角色；图片含视觉描述）",
                 messages_md,
                 "",
                 "## AI 联调共识摘要",
@@ -149,6 +179,7 @@ def main() -> int:
         "req_id": req_id,
         "window": args.window,
         "message_count": len(messages),
+        "image_stats": image_stats,
         "plan_source": plan_source,
         "update_command": update_cmd,
         "digest_at": iso_now(),

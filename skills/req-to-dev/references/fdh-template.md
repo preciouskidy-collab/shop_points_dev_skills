@@ -1,6 +1,6 @@
 # Frontend Development Handoff (FDH) 模板
 
-后端编码完成后按此模板生成 `handoff/frontend-handoff.md`。
+契约对齐阶段（`frontend-handoff`）按此模板生成瘦身版 `handoff/frontend-handoff.md`（UI + E2E；API 引用 `api-contract.yaml`）。
 
 ---
 
