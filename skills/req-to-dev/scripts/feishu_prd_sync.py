@@ -65,8 +65,10 @@ def main() -> int:
         patch_id=patch_id,
         meeting_url=args.meeting_url,
     )
-    update_cmd = plan.get("update", {}).get("command", "append")
-    print(f"✓ 生成 plan（update.command={update_cmd}，变更项 {len(plan.get('changes', []))} 条）")
+    update_cmd = (plan.get("update") or {}).get("command") or "agent_pending"
+    print(f"✓ 生成 plan（plan_source={plan.get('plan_source')}，update.command={update_cmd}）")
+    if plan.get("plan_source") == "agent_pending":
+        print("ℹ 复杂修订待 Agent 填写 plan.json 后执行 finalize-plan")
 
     approval_nonce = new_approval_nonce()
 
@@ -87,6 +89,11 @@ def main() -> int:
             "",
             "## 当前 PRD 快照",
             prd_md[:8000],
+            "",
+            "## Agent 任务",
+            "1. 对照纪要凝练共识，找出与 PRD 的冲突/差异",
+            "2. 修订 plan.json（str_replace），执行 finalize-plan 重算预览",
+            "3. 向用户展示摘要与拟修正点，等待确认后 approve",
             "",
             "## 说明",
             "本 patch 在 Pipeline init 之前生成。PRD 定稿后 RD 再执行 run_workflow init。",

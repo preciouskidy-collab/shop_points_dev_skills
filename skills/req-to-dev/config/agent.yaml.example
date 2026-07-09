@@ -12,15 +12,6 @@ lark_cli:
   fetch_format: "pretty"      # pretty | json
   profile: "shop-points-dev"
 
-# 联调 digest：AI 摘要群消息并对照 PRD（OpenAI 兼容接口）
-llm:
-  enabled: true
-  base_url: "https://api.openai.com/v1"
-  api_key: ""                 # 或环境变量 OPENAI_API_KEY
-  model: "Deepseek-V4-Pro"      # 纪要/联调文本摘要
-  vision_model: "MiniMax-M3"    # 联调群图片多模态分析
-  timeout_sec: 120
-
 # 联调群消息 sender 系统号 → 角色（digest 摘要权重）
 collab:
   sender_roles:

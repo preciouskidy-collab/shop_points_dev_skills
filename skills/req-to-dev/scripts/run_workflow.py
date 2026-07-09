@@ -525,6 +525,25 @@ def cmd_status(args):
         else:
             print(f"  产出物状态: ❌ 缺失 {', '.join(missing)}")
 
+    prd = state.get("prd_resync") or {}
+    regression = prd.get("regression") or {}
+    if regression.get("awaiting_plan_approve"):
+        print()
+        print("⚠️  联调 PRD 回灌待重审")
+        print(f"   Tier-{regression.get('tier')} · patch {regression.get('patch_id')}")
+        print(f"   自 {regression.get('from_stage')} 回退至 {regression.get('to_stage')}")
+        if regression.get("change_summary"):
+            print(f"   变更: {regression['change_summary']}")
+        if current["id"] == "plan-approve" and current["status"] == "running":
+            _LIB = _SCRIPT_DIR / "lib"
+            if str(_LIB) not in sys.path:
+                sys.path.insert(0, str(_LIB))
+            from pipeline_regress import plan_approve_prompt_lines  # noqa: WPS433
+
+            for line in plan_approve_prompt_lines(state):
+                print(line)
+            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {state['name']}")
+
 
 def cmd_advance(args):
     """推进到下一阶段"""
@@ -648,12 +667,13 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
         print("BLOCKING: 需要人工审批")
         print()
         if next_stage["id"] == "plan-approve":
-            print(">>> 请向用户展示以下内容并请求审批（协议 + 详设，进入编码）：")
-            print("    - request/spec.md                    需求规格")
-            print("    - impact/impact.md                   影响范围（api_change / frontend_scope）")
-            print("    - handoff/api-contract.yaml        API 协议（api_change≠none）")
-            print("    - tech-design/tech-design.md       后端技术方案")
-            print("    - tech-design/frontend-design.md   前端技术设计（frontend_scope≠none）")
+            _LIB = _SCRIPT_DIR / "lib"
+            if str(_LIB) not in sys.path:
+                sys.path.insert(0, str(_LIB))
+            from pipeline_regress import plan_approve_prompt_lines  # noqa: WPS433
+
+            for line in plan_approve_prompt_lines(state):
+                print(line)
             print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
             print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
         elif next_stage["id"] == "deploy-approve":
@@ -693,6 +713,17 @@ def cmd_approve(args):
     if not current["blocking"]:
         print(f"ERROR: 当前阶段 {current['id']} 不是阻塞阶段，无需审批", file=sys.stderr)
         sys.exit(1)
+
+    # 联调 resync 回退后的 plan-approve：通过后清除待审标记
+    if current["id"] == "plan-approve":
+        _LIB = _SCRIPT_DIR / "lib"
+        if str(_LIB) not in sys.path:
+            sys.path.insert(0, str(_LIB))
+        from pipeline_regress import clear_collab_regression  # noqa: WPS433
+
+        if clear_collab_regression(state):
+            _log(change_dir, "COLLAB regression cleared after plan-approve")
+            print("✓ 已清除联调回退待审标记（handoff_stale / needs_collab_reapprove）")
 
     # 标记完成
     current["status"] = "completed"

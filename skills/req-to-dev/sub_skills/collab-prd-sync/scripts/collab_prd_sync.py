@@ -29,8 +29,7 @@ def main() -> int:
     p_digest = sub.add_parser("digest", help="企微联调群消息 → PRD digest（dry-run）")
     p_digest.add_argument("--req-id", required=True)
     p_digest.add_argument("--window", default="48h")
-    p_digest.add_argument("--no-images", action="store_true", help="跳过 image 解析与视觉分析")
-    p_digest.add_argument("--no-llm", action="store_true", help="禁用 LLM，使用启发式")
+    p_digest.add_argument("--no-images", action="store_true", help="跳过 image 解析与下载")
 
     p_meeting = sub.add_parser("meeting", help="会议纪要 → PRD（pre-pipeline，无需 req_id）")
     p_meeting.add_argument("--meeting-url", required=True)
@@ -63,6 +62,13 @@ def main() -> int:
         help="链路 2 写回 PRD 后不自动 resync",
     )
     p_approve.add_argument(
+        "--tier",
+        type=int,
+        choices=(1, 2, 3),
+        default=None,
+        help="PRD resync Tier（链路 2 approve 后自动 resync 时使用）",
+    )
+    p_approve.add_argument(
         "--mode",
         choices=("agent-chat", "terminal"),
         default="agent-chat",
@@ -77,6 +83,14 @@ def main() -> int:
 
     p_resync = sub.add_parser("resync", help="PRD diff 增量回灌 spec/tasks")
     p_resync.add_argument("--req-id", required=True)
+    p_resync.add_argument("--patch", default=None)
+    p_resync.add_argument("--tier", type=int, choices=(1, 2, 3), default=None)
+
+    p_finalize = sub.add_parser("finalize-plan", help="Agent 修订 plan.json 后重算 human_summary + dry-run")
+    p_finalize.add_argument("--patch", required=True)
+    p_finalize.add_argument("--prd-url", default=None)
+    p_finalize.add_argument("--req-id", default=None)
+    p_finalize.add_argument("--allow-append", action="store_true")
 
     p_test = sub.add_parser("test", help="lark-cli fetch + dry-run 连通性测试")
     p_test.add_argument("--url", default=None)
@@ -86,8 +100,6 @@ def main() -> int:
 
     if args.command == "digest":
         digest_argv = ["--req-id", args.req_id, "--window", args.window]
-        if args.no_llm:
-            digest_argv.append("--no-llm")
         if getattr(args, "no_images", False):
             digest_argv.append("--no-images")
         return _run("collab_digest.py", digest_argv)
@@ -122,6 +134,8 @@ def main() -> int:
             argv.append("--force")
         if args.skip_resync:
             argv.append("--skip-resync")
+        if getattr(args, "tier", None) is not None:
+            argv.extend(["--tier", str(args.tier)])
         argv.extend(["--mode", args.mode])
         if args.chat_confirm:
             argv.extend(["--chat-confirm", args.chat_confirm])
@@ -130,8 +144,25 @@ def main() -> int:
         if args.skip_preflight:
             argv.append("--skip-preflight")
         return _run("collab_approve.py", argv)
+    if args.command == "finalize-plan":
+        argv = ["--patch", args.patch]
+        if args.prd_url:
+            argv.extend(["--prd-url", args.prd_url])
+        elif args.req_id:
+            argv.extend(["--req-id", args.req_id])
+        else:
+            print("ERROR: finalize-plan 需要 --prd-url 或 --req-id", file=sys.stderr)
+            return 1
+        if getattr(args, "allow_append", False):
+            argv.append("--allow-append")
+        return _run("finalize_plan.py", argv)
     if args.command == "resync":
-        return _run("prd_resync.py", ["--req-id", args.req_id])
+        resync_argv = ["--req-id", args.req_id]
+        if args.patch:
+            resync_argv.extend(["--patch", args.patch])
+        if args.tier is not None:
+            resync_argv.extend(["--tier", str(args.tier)])
+        return _run("prd_resync.py", resync_argv)
     if args.command == "test":
         argv = []
         if args.url:

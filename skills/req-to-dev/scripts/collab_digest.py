@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""联调消息整理：拉 Agent 消息 → AI 摘要 + 对照 PRD → lark-cli dry-run。"""
+"""联调消息整理：拉 Agent 消息 → 落盘材料 → Agent 撰写 plan → lark-cli dry-run。"""
 
 from __future__ import annotations
 
@@ -34,24 +34,18 @@ from collab_message_enricher import (  # noqa: E402
     format_image_enrichment_report,
 )
 from sender_roles import format_collab_messages_md, format_sender_roles_legend  # noqa: E402
-from llm_client import is_llm_available  # noqa: E402
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="联调 digest：AI 摘要群消息 + 对照 PRD 生成 patch + dry-run",
+        description="联调 digest：拉群消息落盘 + 启发式预填 plan + dry-run（复杂修订由 Agent 写 plan.json）",
     )
     parser.add_argument("--req-id", required=True)
     parser.add_argument("--window", default="48h")
     parser.add_argument(
-        "--no-llm",
-        action="store_true",
-        help="禁用 LLM，仅用启发式（颜色/删除类规则）",
-    )
-    parser.add_argument(
         "--no-images",
         action="store_true",
-        help="跳过 image 消息解析与视觉分析",
+        help="跳过 image 消息解析与下载",
     )
     args = parser.parse_args()
 
@@ -84,7 +78,6 @@ def main() -> int:
         messages,
         images_dir=images_dir,
         resolve_images=not args.no_images,
-        use_vision=not args.no_images and not args.no_llm,
     )
     if image_stats.get("image_total"):
         print(format_image_enrichment_report(image_stats))
@@ -107,23 +100,20 @@ def main() -> int:
         messages_md or "（无有效消息）\n", encoding="utf-8"
     )
 
-    use_llm = not args.no_llm
-    if use_llm and not is_llm_available():
-        print("WARN: 未配置 LLM（secrets.local.json → llm.api_key），使用启发式摘要")
-
     plan, plan_source = build_collab_plan(
         messages,
         prd_md,
         prd_url=prd_url,
         patch_id=patch_id,
-        use_llm=use_llm,
     )
     (pdir / "collab_summary.md").write_text(
         (plan.get("consensus_summary") or "") + "\n", encoding="utf-8"
     )
 
-    update_cmd = plan.get("update", {}).get("command", "?")
+    update_cmd = (plan.get("update") or {}).get("command") or "agent_pending"
     print(f"✓ 规划完成 plan_source={plan_source} update.command={update_cmd}")
+    if plan_source == "agent_pending":
+        print("ℹ 复杂修订待 Agent 填写 plan.json 后执行 finalize-plan")
 
     (pdir / "digest_prompt.md").write_text(
         "\n".join(
@@ -138,17 +128,22 @@ def main() -> int:
                 "## 发言角色映射",
                 roles_legend,
                 "",
-                "## 原始联调消息（已标注角色；图片含视觉描述）",
+                "## 原始联调消息（已标注角色；图片见 patch/images/，由 Agent 直接查看）",
                 messages_md,
                 "",
-                "## AI 联调共识摘要",
+                "## 启发式联调共识（可修订）",
                 plan.get("consensus_summary") or "",
                 "",
-                "## PRD 差异说明",
+                "## PRD 差异说明（Agent 填写）",
                 plan.get("prd_diff_summary") or "",
                 "",
                 "## 当前 PRD 快照（节选）",
                 prd_md[:8000],
+                "",
+                "## Agent 任务",
+                "1. 对照上文凝练联调共识，修订 plan.json（str_replace）",
+                "2. 执行 finalize-plan 重算 human_summary 与 dry-run",
+                "3. 向用户展示摘要与拟修正点，等待确认后 approve",
             ]
         ),
         encoding="utf-8",
@@ -167,11 +162,14 @@ def main() -> int:
     )
 
     dry_log = pdir / "dry_run.log"
-    try:
-        update_dry_run(prd_url, plan_path, log_path=dry_log)
-        print("✓ lark-cli dry-run 通过")
-    except RuntimeError as e:
-        print(f"WARN: dry-run 失败（可修订 plan.json 后重试）: {e}")
+    if plan.get("update"):
+        try:
+            update_dry_run(prd_url, plan_path, log_path=dry_log)
+            print("✓ lark-cli dry-run 通过")
+        except RuntimeError as e:
+            print(f"WARN: dry-run 失败（Agent 完善 plan.json 后重试 finalize-plan）: {e}")
+    else:
+        print("ℹ plan 为 agent_pending，跳过 dry-run（待 Agent 填写 plan.json）")
 
     meta = {
         "patch_id": patch_id,

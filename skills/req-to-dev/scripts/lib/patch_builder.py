@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from collab_common import append_log, iso_now, save_state
-from lark_cli import update_dry_run
+from lark_cli import update_dry_run, validate_plan_for_apply
 
 
 def new_approval_nonce() -> str:
@@ -70,23 +70,31 @@ def build_append_plan(
 
 
 def preview_prd_after_plan(prd_md: str, plan: dict) -> str | None:
-    """本地模拟 str_replace，供 human_summary / dry-run 展示修改后 PRD。"""
-    upd = plan.get("update") or {}
-    if upd.get("command") != "str_replace":
-        return None
-    pattern = (upd.get("pattern") or "").strip()
-    if not pattern:
-        return None
-    content = upd.get("content", "")
-    if pattern in prd_md:
-        return prd_md.replace(pattern, content, 1)
-    for line in prd_md.splitlines():
-        stripped = line.strip()
-        if not stripped:
+    """本地模拟 plan 中全部 str_replace，供 human_summary 展示修改后 PRD。"""
+    from lark_cli import _collect_plan_updates  # noqa: WPS433
+
+    result = prd_md
+    changed = False
+    for upd in _collect_plan_updates(plan):
+        if upd.get("command") != "str_replace":
             continue
-        if pattern == stripped or pattern in stripped or stripped in pattern:
-            return prd_md.replace(line, content, 1)
-    return None
+        pattern = (upd.get("pattern") or "").strip()
+        if not pattern:
+            continue
+        content = upd.get("content", "")
+        if pattern in result:
+            result = result.replace(pattern, content, 1)
+            changed = True
+            continue
+        for line in result.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if pattern == stripped or pattern in stripped or stripped in pattern:
+                result = result.replace(line, content, 1)
+                changed = True
+                break
+    return result if changed else None
 
 
 def build_human_summary(
@@ -106,24 +114,41 @@ def build_human_summary(
     if prd_diff:
         lines.extend(["## PRD 差异 / 拟修订", "", prd_diff, ""])
 
-    update_cmd = (plan.get("update") or {}).get("command", "append")
-    if prd_md and update_cmd == "str_replace":
-        after = preview_prd_after_plan(prd_md, plan)
-        if after is not None and after != prd_md:
-            lines.extend(["## 修改后 PRD 预览（dry-run）", "", after, ""])
-        upd = plan.get("update") or {}
-        pattern = (upd.get("pattern") or "").strip()
-        content = upd.get("content", "")
-        if pattern:
-            lines.extend(
-                [
-                    "## 拟执行替换",
-                    "",
-                    f"- **原文**：`{pattern}`",
-                    f"- **改为**：`{content or '(删除该行)'}`",
-                    "",
-                ]
-            )
+    update = plan.get("update")
+    if plan.get("plan_source") == "agent_pending" or not update:
+        lines.extend(
+            [
+                "## 状态",
+                "",
+                "待 Agent 对照材料填写 `plan.json`（str_replace），完成后执行 finalize-plan。",
+                "",
+            ]
+        )
+    elif prd_md:
+        from lark_cli import _collect_plan_updates  # noqa: WPS433
+
+        has_str_replace = any(
+            u.get("command") == "str_replace" for u in _collect_plan_updates(plan)
+        )
+        if has_str_replace:
+            after = preview_prd_after_plan(prd_md, plan)
+            if after is not None and after != prd_md:
+                lines.extend(["## 修改后 PRD 预览（本地模拟 str_replace）", "", after, ""])
+            for upd in _collect_plan_updates(plan):
+                if upd.get("command") != "str_replace":
+                    continue
+                pattern = (upd.get("pattern") or "").strip()
+                content = upd.get("content", "")
+                if pattern:
+                    lines.extend(
+                        [
+                            "## 拟执行替换",
+                            "",
+                            f"- **原文**：`{pattern[:200]}{'…' if len(pattern) > 200 else ''}`",
+                            f"- **改为**：`{content or '(删除该行)'}`",
+                            "",
+                        ]
+                    )
 
     lines.append("## 变更项")
     lines.append("")
@@ -214,29 +239,34 @@ def extract_meeting_items(meeting_md: str) -> list[str]:
     return unique
 
 
-_MEETING_LLM_SYSTEM = """你是 PRD 维护助手。根据飞书会议纪要与我提供的 PRD 正文：
-1. 理解会议达成的需求变更
-2. 对照 PRD，定位需要修改的原文（pattern 必须是 PRD 中存在的完整一行原文）
-3. 输出 str_replace 修订，使 approve 后直接修改 PRD 正文（禁止仅 append 变更记录节）
+_AGENT_PENDING_DIFF = (
+    "待 Agent 对照 digest_prompt.md / meeting.md / prd_snapshot.md 撰写 plan.json（str_replace），"
+    "完成后执行 finalize-plan 重算预览。"
+)
 
-输出严格 JSON：
-{
-  "consensus_summary": "- 要点",
-  "prd_diff_summary": "- PRD 差异说明",
-  "changes": [
-    {
-      "summary": "变更说明",
-      "update": {
-        "command": "str_replace",
-        "pattern": "PRD 中要替换的整行原文",
-        "content": "替换后的整行"
-      }
+
+def build_agent_pending_plan(
+    *,
+    prd_url: str,
+    patch_id: str,
+    source: str,
+    consensus_summary: str = "",
+    prd_diff_summary: str = _AGENT_PENDING_DIFF,
+    extra: dict | None = None,
+) -> dict:
+    plan: dict = {
+        "version": 1,
+        "source": source,
+        "plan_source": "agent_pending",
+        "prd_url": prd_url,
+        "consensus_summary": consensus_summary,
+        "prd_diff_summary": prd_diff_summary,
+        "changes": [],
+        "update": None,
     }
-  ]
-}
-
-若需删除某段描述，content 为删除该段后的整行；若需删整行则 content 为空字符串。
-无法 str_replace 时 changes 可为空，但须填写 prd_diff_summary 说明原因。"""
+    if extra:
+        plan.update(extra)
+    return plan
 
 
 _REMOVAL = re.compile(
@@ -374,48 +404,10 @@ def build_meeting_plan(
     prd_url: str,
     patch_id: str,
     meeting_url: str,
-    use_llm: bool = True,
 ) -> dict:
     items = extract_meeting_items(meeting_md)
-
-    if use_llm:
-        from llm_client import chat_completion_json, is_llm_available, load_llm_config  # noqa: WPS433
-
-        cfg = load_llm_config()
-        if is_llm_available(cfg):
-            prd_excerpt = prd_md if len(prd_md) <= 14000 else prd_md[:14000] + "\n\n…（PRD 已截断）"
-            user = "\n".join(
-                [
-                    f"## patch_id\n{patch_id}",
-                    "",
-                    "## 会议纪要",
-                    meeting_md,
-                    "",
-                    "## 当前 PRD Markdown",
-                    prd_excerpt,
-                ]
-            )
-            try:
-                payload = chat_completion_json(
-                    system=_MEETING_LLM_SYSTEM,
-                    user=user,
-                    cfg=cfg,
-                )
-                plan = _plan_from_llm_payload(
-                    payload, prd_md=prd_md, prd_url=prd_url, patch_id=patch_id
-                )
-                plan["source"] = "feishu_prd_sync"
-                plan["meeting_url"] = meeting_url
-                if plan.get("update", {}).get("command") == "str_replace":
-                    plan["plan_source"] = "llm"
-                    return plan
-                print("WARN: LLM 未生成 str_replace，回退启发式")
-            except Exception as e:
-                print(f"WARN: LLM meeting 规划失败，回退启发式: {e}")
-
     str_replace = try_str_replace_from_meeting(items, prd_md)
 
-    extra = {"meeting_url": meeting_url}
     if str_replace:
         matched = str_replace["matched_line"]
         content = str_replace["content"]
@@ -448,26 +440,13 @@ def build_meeting_plan(
             },
         }
 
-    content_extra = f"\n> 来源：[会议纪要]({meeting_url})\n"
-    plan = build_append_plan(
-        source="feishu_prd_sync",
-        items=items,
+    return build_agent_pending_plan(
         prd_url=prd_url,
         patch_id=patch_id,
-        section_title="会议纪要变更",
-        extra=extra,
+        source="feishu_prd_sync",
+        consensus_summary="\n".join(f"- {it}" for it in items[:12]),
+        extra={"meeting_url": meeting_url},
     )
-    plan["plan_source"] = "heuristic_fallback_append"
-    plan["prd_diff_summary"] = (
-        "未能自动匹配 PRD 行进行 str_replace；已降级为文末追加变更记录。"
-        "请修订 plan.json 为 str_replace 后重新 digest，或人工改正文。"
-    )
-    plan["update"]["content"] = plan["update"]["content"].replace(
-        f"## 会议纪要变更 · {patch_id}\n",
-        f"## 会议纪要变更 · {patch_id}{content_extra}",
-        1,
-    )
-    return plan
 
 
 _NOISE = re.compile(
@@ -642,68 +621,6 @@ def _plan_from_consensus_append(
     }
 
 
-def _resolve_str_replace_pattern(pattern: str, prd_md: str) -> str | None:
-    if pattern in prd_md:
-        return pattern
-    for line in prd_md.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if pattern in stripped or stripped in pattern:
-            return stripped
-    return None
-
-
-def _plan_from_llm_payload(
-    payload: dict,
-    *,
-    prd_md: str,
-    prd_url: str,
-    patch_id: str,
-) -> dict:
-    consensus = (payload.get("consensus_summary") or "").strip()
-    prd_diff = (payload.get("prd_diff_summary") or payload.get("prd_diff") or "").strip()
-    changes = payload.get("changes") or []
-
-    for item in changes:
-        upd = item.get("update") or {}
-        cmd = upd.get("command", "str_replace")
-        if cmd != "str_replace":
-            continue
-        pattern = (upd.get("pattern") or "").strip()
-        content = upd.get("content", "")
-        if not pattern:
-            continue
-        resolved = _resolve_str_replace_pattern(pattern, prd_md)
-        if not resolved:
-            continue
-        return _plan_from_str_replace(
-            str_replace={
-                "command": "str_replace",
-                "doc_format": "markdown",
-                "pattern": resolved,
-                "content": content,
-                "matched_line": resolved,
-                "reason": item.get("summary") or "按联调共识修订 PRD",
-            },
-            prd_url=prd_url,
-            patch_id=patch_id,
-            consensus_summary=consensus,
-            prd_diff_summary=prd_diff,
-            plan_source="llm",
-        )
-
-    if not consensus:
-        raise RuntimeError("LLM 未返回 consensus_summary")
-    return _plan_from_consensus_append(
-        prd_url=prd_url,
-        patch_id=patch_id,
-        consensus_summary=consensus,
-        prd_diff_summary=prd_diff or "LLM 未能生成可自动 str_replace 的 PRD 定位，已追加共识摘要供人工修订。",
-        plan_source="llm",
-    )
-
-
 def build_collab_plan_heuristic(
     messages: list[dict],
     prd_md: str,
@@ -745,49 +662,13 @@ def build_collab_plan_heuristic(
             plan_source="heuristic",
         )
 
-    return _plan_from_consensus_append(
+    return build_agent_pending_plan(
         prd_url=prd_url,
         patch_id=patch_id,
+        source="collab_digest",
         consensus_summary=consensus,
-        prd_diff_summary="未能自动匹配 PRD 行进行 str_replace；已写入联调共识摘要，请 PM 确认定位。",
-        plan_source="heuristic",
+        extra={},
     )
-
-
-def _collab_llm_system() -> str:
-    from sender_roles import format_sender_roles_legend  # noqa: WPS433
-
-    legend = format_sender_roles_legend()
-    return f"""你是 PRD 维护助手。根据企微联调群聊天记录与飞书 PRD 正文：
-1. 消息发送方已标注角色（方括号内），请按角色理解发言权重：
-   - PM：产品决策、验收口径、文案与交互定稿优先采信
-   - RD / RD负责人 / RDLeader：技术实现、接口字段、兼容性说明
-   - FE：前端展示、交互细节、联调现象
-2. 忽略 OK/好的/收到等确认语与重复扯皮，凝练「联调共识」摘要（markdown 列表）
-3. 消息中的 [图片] 段落含「视觉描述」，请将其与文字消息一并纳入共识（文案、颜色、布局等）
-4. 对照 PRD，找出与共识不一致或 PRD 未写清之处
-5. 优先输出可在 PRD 中精确 str_replace 的修订（pattern 必须是 PRD 中存在的完整一行原文）
-
-角色映射表：
-{legend}
-
-输出严格 JSON：
-{{
-  "consensus_summary": "- 要点1\\n- 要点2",
-  "prd_diff_summary": "- PRD 差异说明（markdown 列表）",
-  "changes": [
-    {{
-      "summary": "变更说明",
-      "update": {{
-        "command": "str_replace",
-        "pattern": "PRD 中要替换的整行原文",
-        "content": "替换后的整行"
-      }}
-    }}
-  ]
-}}
-
-若无法 str_replace，changes 可为空，但 consensus_summary 与 prd_diff_summary 必须填写。"""
 
 
 def build_collab_plan(
@@ -796,35 +677,8 @@ def build_collab_plan(
     *,
     prd_url: str,
     patch_id: str,
-    use_llm: bool = True,
 ) -> tuple[dict, str]:
-    """返回 (plan, plan_source_label)。"""
-    from llm_client import chat_completion_json, is_llm_available, load_llm_config  # noqa: WPS433
-    from sender_roles import format_collab_messages_md  # noqa: WPS433
-
-    raw_md = format_collab_messages_md(messages)
-    cfg = load_llm_config()
-
-    if use_llm and is_llm_available(cfg):
-        prd_excerpt = prd_md if len(prd_md) <= 14000 else prd_md[:14000] + "\n\n…（PRD 已截断）"
-        user = "\n".join(
-            [
-                f"## patch_id\n{patch_id}",
-                "",
-                "## 联调群消息",
-                raw_md or "（无消息）",
-                "",
-                "## 当前 PRD Markdown",
-                prd_excerpt,
-            ]
-        )
-        try:
-            payload = chat_completion_json(system=_collab_llm_system(), user=user, cfg=cfg)
-            plan = _plan_from_llm_payload(payload, prd_md=prd_md, prd_url=prd_url, patch_id=patch_id)
-            return plan, "llm"
-        except Exception as e:
-            print(f"WARN: LLM 规划失败，回退启发式: {e}")
-
+    """返回 (plan, plan_source_label)。复杂修订由 Agent 填写 plan.json。"""
     plan = build_collab_plan_heuristic(messages, prd_md, prd_url=prd_url, patch_id=patch_id)
     return plan, plan.get("plan_source", "heuristic")
 
@@ -834,6 +688,22 @@ def _format_collab_messages_md(messages: list[dict]) -> str:
     from sender_roles import format_collab_messages_md  # noqa: WPS433
 
     return format_collab_messages_md(messages)
+
+
+def finalize_plan_patch(
+    *,
+    pdir: Path,
+    prd_url: str,
+    plan: dict,
+    rebuild_summary,
+) -> None:
+    """Agent 修订 plan.json 后：校验 + human_summary + dry-run。"""
+    validate_plan_for_apply(plan)
+    plan_path = pdir / "plan.json"
+    plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary_path = pdir / "human_summary.md"
+    summary_path.write_text(rebuild_summary(plan), encoding="utf-8")
+    update_dry_run(prd_url, plan_path, log_path=pdir / "dry_run.log")
 
 
 def finalize_patch(
@@ -874,10 +744,14 @@ def finalize_patch(
     (pdir / "digest_prompt.md").write_text(digest_prompt, encoding="utf-8")
 
     dry_log = pdir / "dry_run.log"
-    try:
-        update_dry_run(prd_url, plan_path, log_path=dry_log)
-    except RuntimeError as e:
-        print(f"WARN: dry-run 失败（可完善 plan.json 后重试 approve）: {e}")
+    updates = plan.get("update") or plan.get("updates")
+    if updates:
+        try:
+            update_dry_run(prd_url, plan_path, log_path=dry_log)
+        except RuntimeError as e:
+            print(f"WARN: dry-run 失败（Agent 完善 plan.json 后重试 finalize-plan）: {e}")
+    else:
+        print("ℹ plan 为 agent_pending，跳过 dry-run（待 Agent 填写 plan.json）")
 
     meta = {
         "patch_id": patch_id,
@@ -947,10 +821,14 @@ def finalize_pre_pipeline_patch(
     (pdir / "digest_prompt.md").write_text(digest_prompt, encoding="utf-8")
 
     dry_log = pdir / "dry_run.log"
-    try:
-        update_dry_run(prd_url, plan_path, log_path=dry_log)
-    except RuntimeError as e:
-        print(f"WARN: dry-run 失败（可完善 plan.json 后重试 approve）: {e}")
+    updates = plan.get("update") or plan.get("updates")
+    if updates:
+        try:
+            update_dry_run(prd_url, plan_path, log_path=dry_log)
+        except RuntimeError as e:
+            print(f"WARN: dry-run 失败（Agent 完善 plan.json 后重试 finalize-plan）: {e}")
+    else:
+        print("ℹ plan 为 agent_pending，跳过 dry-run（待 Agent 填写 plan.json）")
 
     meta = {
         "patch_id": patch_id,

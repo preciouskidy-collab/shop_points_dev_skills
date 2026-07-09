@@ -112,24 +112,68 @@ def _load_plan(plan_path: Path) -> dict:
     return json.loads(plan_path.read_text(encoding="utf-8"))
 
 
-def _plan_to_update_args(plan: dict) -> tuple[str, str, str, str | None]:
-    """从 plan.json 解析 update 参数: command, doc_format, content, pattern."""
-    upd = plan.get("update")
-    if isinstance(upd, dict) and upd.get("content"):
-        return (
-            upd.get("command", "append"),
-            upd.get("doc_format", "markdown"),
-            upd["content"],
-            upd.get("pattern"),
-        )
+def _collect_plan_updates(plan: dict) -> list[dict]:
+    """从 plan.json 解析待执行的 update 列表（支持单条 update 或 updates 数组）。"""
+    updates = plan.get("updates")
+    if isinstance(updates, list):
+        out = [u for u in updates if isinstance(u, dict) and u.get("command")]
+        if out:
+            return out
 
-    # 兼容旧 plan：由 changes 列表生成 append 内容
+    upd = plan.get("update")
+    if isinstance(upd, dict) and upd.get("command"):
+        return [upd]
+
     lines = ["## 联调变更", ""]
     for item in plan.get("changes", []):
-        summary = item.get("summary", str(item))
+        if isinstance(item, dict) and item.get("update"):
+            out_item = item["update"]
+            if isinstance(out_item, dict) and out_item.get("command"):
+                return [out_item]
+        summary = item.get("summary", str(item)) if isinstance(item, dict) else str(item)
         lines.append(f"- {summary}")
     content = "\n".join(lines).strip() + "\n"
-    return "append", "markdown", content, None
+    if plan.get("changes"):
+        return [{"command": "append", "doc_format": "markdown", "content": content}]
+    return []
+
+
+def _plan_to_update_args(plan: dict) -> tuple[str, str, str, str | None]:
+    """从 plan.json 解析单条 update（兼容旧调用方）。"""
+    updates = _collect_plan_updates(plan)
+    if not updates:
+        return "append", "markdown", "", None
+    upd = updates[0]
+    return (
+        upd.get("command", "append"),
+        upd.get("doc_format", "markdown"),
+        upd.get("content", ""),
+        upd.get("pattern"),
+    )
+
+
+def validate_plan_for_apply(plan: dict, *, allow_append: bool = False) -> None:
+    """approve 前校验：PRD 定稿/联调写回须就地修改正文，禁止 append 变更记录节。"""
+    if plan.get("plan_source") == "agent_pending":
+        raise RuntimeError(
+            "plan 仍为 agent_pending：Agent 须先对照材料撰写 plan.json（str_replace），"
+            "再执行 finalize-plan。"
+        )
+    updates = _collect_plan_updates(plan)
+    if not updates:
+        raise RuntimeError("plan.json 缺少 update/updates，无法写回 PRD。")
+
+    for i, upd in enumerate(updates, 1):
+        cmd = upd.get("command", "")
+        if cmd == "append" and not allow_append:
+            raise RuntimeError(
+                f"第 {i} 条变更为 append（文末追加），不符合 PRD 定稿/联调写回规范。\n"
+                "应使用 str_replace 就地修改 PRD 正文（或多条 updates[]），"
+                "禁止追加「会议纪要变更记录」类章节。\n"
+                "调试可加 --allow-append（不推荐）。"
+            )
+        if cmd == "str_replace" and not (upd.get("pattern") or "").strip():
+            raise RuntimeError(f"第 {i} 条 str_replace 缺少 pattern（须为 PRD 中存在的原文）。")
 
 
 def _validate_approval(
@@ -177,44 +221,60 @@ def _update(url: str, plan_path: Path, dry_run: bool, log_path: Path, cfg: dict 
     cfg = cfg or load_lark_config()
     binary = resolve_binary(cfg)
     plan = _load_plan(plan_path)
-    command, doc_format, content, pattern = _plan_to_update_args(plan)
+    updates = _collect_plan_updates(plan)
+    if not updates:
+        raise RuntimeError("plan.json 无有效 update/updates")
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_chunks: list[str] = []
+    last_result: subprocess.CompletedProcess[str] | None = None
 
-    args = [
-        binary,
-        "docs",
-        "+update",
-        "--api-version",
-        "v2",
-        "--doc",
-        url,
-        "--command",
-        command,
-        "--doc-format",
-        doc_format,
-        "--content",
-        content,
-    ]
-    if pattern:
-        args.extend(["--pattern", pattern])
-    if dry_run:
-        args.append("--dry-run")
+    for idx, upd in enumerate(updates, 1):
+        command = upd.get("command", "append")
+        doc_format = upd.get("doc_format", "markdown")
+        content = upd.get("content", "")
+        pattern = upd.get("pattern")
 
-    result = _run(args, cwd=project_root())
-    log_path.write_text(
-        "\n".join(
+        args = [
+            binary,
+            "docs",
+            "+update",
+            "--api-version",
+            "v2",
+            "--doc",
+            url,
+            "--command",
+            command,
+            "--doc-format",
+            doc_format,
+            "--content",
+            content,
+        ]
+        if pattern:
+            args.extend(["--pattern", pattern])
+        if dry_run:
+            args.append("--dry-run")
+
+        result = _run(args, cwd=project_root())
+        last_result = result
+        log_chunks.extend(
             [
+                f"=== update {idx}/{len(updates)} ===",
                 f"$ {' '.join(args)}",
                 f"exit={result.returncode}",
                 "--- stdout ---",
                 result.stdout or "",
                 "--- stderr ---",
                 result.stderr or "",
+                "",
             ]
-        ),
-        encoding="utf-8",
-    )
-    if result.returncode != 0:
+        )
+        if result.returncode != 0:
+            log_path.write_text("\n".join(log_chunks), encoding="utf-8")
+            raise RuntimeError(f"lark-cli update 失败（第 {idx} 条），详见 {log_path}")
+
+    log_path.write_text("\n".join(log_chunks), encoding="utf-8")
+    if last_result and last_result.returncode != 0:
         raise RuntimeError(f"lark-cli update 失败，详见 {log_path}")
 
 

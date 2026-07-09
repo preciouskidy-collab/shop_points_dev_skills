@@ -1,7 +1,7 @@
 ---
 name: collab-prd-sync
-description: "整理联调消息写回PRD：企微联调群消息→摘要→对照PRD找出入拟修正→dry-run预览→人工对话确认后才写飞书PRD；亦含会议纪要meeting、approve、resync"
-version: "0.4.1"
+description: "PRD 反向同步统一入口（修改/更新飞书 PRD 文档都走这里）。链路1 会议纪要→飞书PRD（meeting，init前/无req_id）；链路2 企微联调群→飞书PRD（digest，init后/有req_id）。给出 PRD链接+会议纪要链接、或说『更新飞书PRD/会议纪要更新PRD/整理联调写回PRD』即触发；均为 dry-run 预览→人工对话确认后才写飞书；含 meeting、digest、approve、resync"
+version: "0.4.2"
 category: req-to-dev
 tags:
   - collab
@@ -21,6 +21,20 @@ commands:
   - resync
   - check-config
 trigger_phrases:
+  - 更新飞书 PRD
+  - 更新飞书 prd
+  - 帮我更新飞书 PRD
+  - 帮我更新飞书 prd
+  - 更新 PRD
+  - 修改飞书 PRD
+  - 会议纪要更新 PRD
+  - 根据会议纪要更新 PRD
+  - 根据这份会议纪要更新 PRD
+  - 根据纪要更新 PRD
+  - 根据评审会更新 PRD
+  - 评审会更新 PRD
+  - PRD 定稿
+  - PRD 链接 会议纪要
   - 整理联调消息写回 PRD
   - 整理联调写回 PRD
   - 整理联调消息
@@ -28,8 +42,6 @@ trigger_phrases:
   - 联调写回 PRD
   - 企微消息整理
   - 企微联调写回 PRD
-  - 根据会议纪要更新 PRD
-  - 根据这份会议纪要更新 PRD
   - 审批 patch 写回 PRD
   - PRD 已更新，帮我 prd resync
   - prd resync
@@ -120,35 +132,21 @@ python3 skills/req-to-dev/scripts/run_workflow.py init \
 `digest` 流程（**不会**把原始群消息 append 到 PRD）：
 
 1. 拉 Agent 联调群消息 → `messages_raw.md`（消息按 **sender 系统号 → 角色** 标注）
-2. **image 消息**：用 `md5sum` 调 wekehome `getFileMd5` 换 `signUrl` → 下载到 `patch/images/` → **视觉模型描述**（不再把 md5 JSON 当正文）
-3. **AI 摘要**联调共识（`collab_summary.md`；配置 `llm.api_key`，否则启发式）
-3. **对照 PRD** 生成 `str_replace` 或结构化共识 append → `plan.json`
-4. lark-cli **dry-run** → `dry_run.log`
-5. 展示 `human_summary.md` → **等 PM 对话确认** → `approve`
+2. **image 消息**：用 `md5sum` 调 wekehome `getFileMd5` 换 `signUrl` → 下载到 `patch/images/`（**由 Agent 直接查看图片**）
+3. 脚本启发式预填 `plan.json`（简单颜色/删除规则）；**复杂修订由 Agent 对照 PRD 撰写 str_replace**
+4. Agent 填写 `plan.json` 后 → lark-cli **dry-run** → `dry_run.log`
+5. 展示 `human_summary.md` → **等 PM 对话确认** → `approve`（可带 `--tier` 供 resync）
 
 ```bash
 python3 .../collab_prd_sync.py digest --req-id <req_id> --window 48h
-python3 .../collab_prd_sync.py approve --req-id <req_id> --patch patch-001 --approver <pm>
-python3 .../collab_prd_sync.py resync --req-id <req_id>
+# Agent 修订 plan.json 后（待 finalize-plan 子命令落地前，可手动重跑 dry-run）
+python3 .../collab_prd_sync.py approve --req-id <req_id> --chat-confirm "确认 patch-001 xxx approver <pm>" --tier 2
+python3 .../collab_prd_sync.py resync --req-id <req_id> --tier 2
 ```
 
-LLM 配置（`skills/req-to-dev/config/secrets.local.json`）：
+**认知层（摘要 / diff / 图片理解 / Tier 分级）全部由 Cursor / Claude Code Agent 完成**，脚本不再调用内网 LLM API。
 
-```json
-"llm": {
-  "api_key": "<网关 Key>",
-  "base_url": "https://<内网 OpenAI 兼容网关>/v1",
-  "model": "Deepseek-V4-Pro",
-  "vision_model": "MiniMax-M3"
-}
-```
-
-- **文本摘要**（纪要 / 联调）：`model` → `Deepseek-V4-Pro`
-- **图片分析**：`vision_model` → `MiniMax-M3`（须支持 `image_url` 多模态）
-- `api_key` 可写在 `secrets.local.json`，或环境变量 `OPENAI_API_KEY`（文件中留空 `""` 时读环境变量）
-- 无 key 时用启发式（颜色变更、纪要式删除规则等）；图片仅下载、不做视觉描述
-
-**发言角色映射**（digest 摘要时标注 `[RD]` / `[FE]` / `[PM]` 等，可在 `secrets.local.json` → `collab.sender_roles` 覆盖）：
+**发言角色映射**（digest 时标注 `[RD]` / `[FE]` / `[PM]` 等，可在 `secrets.local.json` → `collab.sender_roles` 覆盖）：
 
 | 系统号 | 角色 | 说明 |
 |--------|------|------|
@@ -161,13 +159,15 @@ LLM 配置（`skills/req-to-dev/config/secrets.local.json`）：
 **会话存档图片**（`message_content` 为 `{"md5sum":...}` 的 image 消息）：
 
 1. 配置 `secrets.local.json` → `collab.chatarchive.secret`（及 app_id / biz_code）
-2. digest 自动换 `signUrl`、下载图片、用 `llm.vision_model`（`MiniMax-M3`）生成视觉描述
-3. 摘要 LLM 读的是「视觉描述 + 文字」，不是 md5
+2. digest 自动换 `signUrl`、下载图片到 `patch/images/`
+3. Agent 直接读取本地图片理解 UI/文案/颜色
 4. `--no-images` 可跳过图片解析
 
 ## 硬规则
 
 - `meeting` / `digest` 仅 dry-run
+- **PRD 定稿 / 联调写回 = 就地修改正文（`str_replace` 或 `updates[]`），禁止 `append` 追加变更记录节**
+- 复杂修订：Agent 写 `plan.json` → `finalize-plan` → 展示**修改后 PRD 预览** → 用户确认 → `approve`
 - 真实写回必须 `approve` + **用户在对话中的确认语**（`--chat-confirm`）
 - Agent 不得伪造确认语；不得未经用户回复就 approve
 - 链路 1 **禁止** resync
@@ -183,7 +183,7 @@ LLM 配置（`skills/req-to-dev/config/secrets.local.json`）：
 | 1 | `digest --req-id <id>`：拉群消息、fetch PRD、生成 draft patch + dry-run | ❌ |
 | 2 | 读 `digest_prompt.md`、`request/prd.md`、`human_summary.md`；向用户说明：**联调共识摘要** + **PRD 拟修正点**（有出入处）；必要时协助修订 `plan.json` 后再 dry-run | ❌ |
 | 3 | 请 PM/RD 审阅预览；给出确认语模板：`确认 patch-NNN <nonce> approver <姓名>` | ❌ **必须等待** |
-| 4 | 用户**在本轮对话**发出确认语后 → `approve --chat-confirm` → **自动 resync** | ✅ |
+| 4 | 用户**在本轮对话**发出确认语后 → `approve --chat-confirm [--tier N]` → **自动 resync** | ✅ |
 
 缺 `req_id` 先向用户索要；群须已 `/init` 绑定。
 
@@ -207,7 +207,8 @@ python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py 
 
 - 打开 `changes/<req_id>/collaboration/patch-NNN/digest_prompt.md`（群消息）与 `request/prd.md`
 - 用自然语言向用户呈现：**联调定了什么**、**PRD 哪里不一致**、**拟怎么改**
-- 若 `plan.json` 只是机械 append、未体现 PRD 差异，Agent 应修订 `plan.json` 并说明变更，**仍不 approve**
+- 若 `plan.json` 为 `agent_pending`，Agent 应对照材料撰写 `str_replace` 并说明变更，**仍不 approve**
+- resync 前 Agent 判定 Tier：写入 `patch-NNN/tier_analysis.json`，或在 `approve`/`resync` 传 `--tier 1|2|3`
 
 ### 步骤 3–4 确认语（写回 + 自动 resync）
 

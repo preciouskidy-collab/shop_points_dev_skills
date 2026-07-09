@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同目录 import
 
 from collab_check_config import _print_report, run_check  # noqa: E402
 from collab_common import append_log, find_change_dir, iso_now, load_state, normalize_feishu_url, save_state  # noqa: E402
-from lark_cli import _plan_fingerprint, apply_prd  # noqa: E402
+from lark_cli import _plan_fingerprint, apply_prd, validate_plan_for_apply  # noqa: E402
 from patch_builder import parse_chat_confirm_phrase  # noqa: E402
 from prd_resync import run_prd_resync  # noqa: E402
 from prd_sync_session import append_session_log, resolve_pre_pipeline_patch, save_session  # noqa: E402
@@ -146,6 +146,12 @@ def _approve_pre_pipeline(args: argparse.Namespace) -> int:
     meta_path = pdir / "meta.json"
     plan_path = pdir / "plan.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    try:
+        validate_plan_for_apply(plan, allow_append=args.allow_append)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
     status = meta.get("status")
     if status != "draft" and not (args.force and status == "prd_applied"):
@@ -236,6 +242,13 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
         return 1
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    try:
+        validate_plan_for_apply(plan, allow_append=args.allow_append)
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
     status = meta.get("status")
     if status != "draft" and not (args.force and status == "prd_applied"):
         print(f"ERROR: patch 状态为 {status}，仅 draft 可 approve", file=sys.stderr)
@@ -318,11 +331,22 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
                 req_id=req_id,
                 prd_url=prd_url,
                 patch_id=args.patch,
+                tier_override=getattr(args, "tier", None),
             )
             print(f"✅ prd resync 完成 · Tier-{result['tier']} · patch {result['patch_id']}")
-            if result["handoff_stale"]:
-                print("⚠ handoff 可能过期，请视情况补跑 frontend-handoff")
-            print(f"✓ resume_stage: {result['resume_stage']} (current_stage 未改变)")
+            analysis = result.get("tier_analysis") or {}
+            if analysis.get("change_summary"):
+                print(f"   摘要: {analysis['change_summary']}")
+            regression = result.get("regression")
+            if regression:
+                from pipeline_regress import format_regression_message  # noqa: WPS433
+
+                print(f"🔄 {format_regression_message(regression)}")
+            elif result.get("needs_collab_reapprove"):
+                print("⚠ 变更需在 plan-approve 前更新契约/详设")
+            elif result["handoff_stale"]:
+                print("⚠ handoff 可能过期，编码后请认真做契约对齐")
+            print(f"✓ current_stage: {result['resume_stage']}")
         except Exception as e:
             print(f"ERROR: 自动 resync 失败: {e}", file=sys.stderr)
             print(f"请手动: python3 prd_resync.py --req-id {req_id} --patch {args.patch}", file=sys.stderr)
@@ -358,6 +382,13 @@ def main() -> int:
         help="链路 2 approve 成功后不自动 prd resync（默认自动 resync）",
     )
     parser.add_argument(
+        "--tier",
+        type=int,
+        choices=(1, 2, 3),
+        default=None,
+        help="PRD resync Tier（Agent 判定；或已写入 patch/tier_analysis.json）",
+    )
+    parser.add_argument(
         "--mode",
         choices=("agent-chat", "terminal"),
         default="agent-chat",
@@ -372,6 +403,11 @@ def main() -> int:
         "--confirmed-by",
         default="",
         help="agent-chat 模式：记录实际确认人（默认取 approver）",
+    )
+    parser.add_argument(
+        "--allow-append",
+        action="store_true",
+        help="不推荐：允许 append 写回（默认仅 str_replace 就地修改）",
     )
     parser.add_argument(
         "--skip-preflight", action="store_true",

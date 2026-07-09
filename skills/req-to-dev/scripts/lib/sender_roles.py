@@ -72,7 +72,7 @@ def resolve_sender_role(message: dict[str, Any], roles: dict[str, str] | None = 
 
 
 def format_sender_roles_legend(roles: dict[str, str] | None = None) -> str:
-    """生成角色说明，供 digest_prompt / LLM system 使用。"""
+    """生成角色说明，供 digest_prompt 使用。"""
     roles = roles or load_sender_roles()
     lines = ["| 系统号 | 角色 | 说明 |", "|--------|------|------|"]
     for sender_id, role in sorted(roles.items(), key=lambda x: x[1]):

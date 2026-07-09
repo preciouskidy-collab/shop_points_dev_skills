@@ -1,4 +1,4 @@
-"""联调群消息预处理：image 类型解析 signUrl、下载、视觉描述。"""
+"""联调群消息预处理：image 类型解析 signUrl、下载到本地（视觉理解由 Agent 完成）。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from chatarchive_client import (
     is_chatarchive_configured,
     load_chatarchive_config,
 )
-from llm_client import describe_image, is_llm_available, load_llm_config
 from sender_roles import resolve_sender_role
 
 _IMAGE_MSG_TYPES = frozenset({"image", "picture", "img"})
@@ -78,25 +77,21 @@ def enrich_collab_messages(
     *,
     images_dir: Path,
     resolve_images: bool = True,
-    use_vision: bool = True,
 ) -> tuple[list[dict], dict[str, Any]]:
     """
-    为 image 消息补充 display_content（含视觉描述）。
+    为 image 消息补充 display_content（含本地路径，供 Agent 直接查看图片）。
     返回 (enriched_messages, stats)。
     """
     enriched: list[dict] = []
     stats: dict[str, Any] = {
         "image_total": 0,
         "image_resolved": 0,
-        "image_vision_ok": 0,
         "image_failed": 0,
         "failures": [],
     }
 
     archive_cfg = load_chatarchive_config()
-    llm_cfg = load_llm_config()
     archive_ok = is_chatarchive_configured(archive_cfg)
-    vision_ok = use_vision and is_llm_available(llm_cfg)
 
     for message in messages:
         item = dict(message)
@@ -140,21 +135,6 @@ def enrich_collab_messages(
             download_signed_file(sign_url, local_path, timeout_sec=int(archive_cfg.get("timeout_sec", 60)))
             stats["image_resolved"] += 1
 
-            vision_summary = ""
-            if vision_ok:
-                try:
-                    vision_summary = describe_image(
-                        local_path,
-                        role=role,
-                        cfg=llm_cfg,
-                    ).strip()
-                    stats["image_vision_ok"] += 1
-                except Exception as e:
-                    vision_summary = f"（视觉描述失败: {e}）"
-                    stats["failures"].append({"md5sum": md5sum, "error": f"vision: {e}"})
-            else:
-                vision_summary = "（未配置 LLM，仅下载图片未做视觉分析）"
-
             rel_path = f"images/{local_name}"
             item["image_meta"] = {
                 "md5sum": md5sum,
@@ -162,14 +142,11 @@ def enrich_collab_messages(
                 "sign_url": sign_url,
                 "local_path": rel_path,
                 "file_type": _guess_ext(file_meta, local_path).lstrip("."),
-                "vision_summary": vision_summary,
+                "role": role,
             }
-            item["display_content"] = "\n".join(
-                [
-                    f"[图片·{item['image_meta']['file_type']}] 本地: {rel_path}",
-                    f"视觉描述: {vision_summary}" if vision_summary else "",
-                ]
-            ).strip()
+            item["display_content"] = (
+                f"[图片·{item['image_meta']['file_type']}] 本地: {rel_path}（由 Agent 直接查看）"
+            )
         except Exception as e:
             item["display_content"] = f"[图片] md5={md5sum}（解析失败: {e}）"
             stats["image_failed"] += 1
@@ -184,7 +161,6 @@ def format_image_enrichment_report(stats: dict[str, Any]) -> str:
     lines = [
         f"- 图片消息: {stats.get('image_total', 0)}",
         f"- 已下载: {stats.get('image_resolved', 0)}",
-        f"- 视觉分析成功: {stats.get('image_vision_ok', 0)}",
         f"- 失败: {stats.get('image_failed', 0)}",
     ]
     failures = stats.get("failures") or []

@@ -117,16 +117,20 @@ class SkillsLoader:
 
     def search_skills(self, query: str = None, category: str = None, tag: str = None) -> List[Skill]:
         """搜索 skills"""
+        def _norm(s: str) -> str:
+            # 归一化：小写 + 去除所有空白，使「更新飞书 PRD」与「更新飞书prd」等价
+            return ''.join(s.lower().split())
+
         results = []
         for skill in self.skills.values():
             if query:
-                q = query.lower()
-                haystack = ' '.join([
+                q = _norm(query)
+                haystack = _norm(' '.join([
                     skill.name,
                     skill.description,
                     ' '.join(skill.tags),
                     ' '.join(skill.trigger_phrases),
-                ]).lower()
+                ]))
                 if q not in haystack:
                     continue
             if category and skill.category != category:
