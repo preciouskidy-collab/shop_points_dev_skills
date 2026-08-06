@@ -17,6 +17,25 @@ def project_root() -> Path:
     return _PROJECT_ROOT
 
 
+def load_collab_settings() -> dict:
+    """读取 config/agent.yaml 或 secrets.local.json 中的 collab 段。"""
+    for name in ("agent.local.yaml", "agent.yaml"):
+        p = CONFIG_DIR / name
+        if p.exists():
+            try:
+                import yaml  # type: ignore
+
+                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+                return data.get("collab", {})
+            except ImportError:
+                break
+    secrets = CONFIG_DIR / "secrets.local.json"
+    if secrets.exists():
+        data = json.loads(secrets.read_text(encoding="utf-8"))
+        return data.get("collab", {})
+    return {}
+
+
 def find_change_dir(req_id: str) -> Path:
     exact = CHANGES_BASE / req_id
     if exact.is_dir():
@@ -101,3 +120,42 @@ def effective_req_id(state: dict, change_dir: Path) -> str:
 
 def normalize_feishu_url(url: str) -> str:
     return url.split("?")[0].strip().rstrip("/")
+
+
+def ensure_active_binding(change_dir: Path, state: dict, req_id: str) -> str:
+    """校验企微群已 /init 绑定；返回 group_id 并写回 pipeline_state。"""
+    from agent_client import AgentClient  # noqa: WPS433
+
+    collab = state.setdefault("collaboration", {})
+    if collab.get("binding_status") == "active" and collab.get("group_id"):
+        return str(collab["group_id"])
+
+    client = AgentClient.from_config()
+    try:
+        binding = client.get_binding(req_id)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"群未绑定 req_id={req_id}。\n"
+            f"请先建群并在企微发送: /init {req_id}\n"
+            f"再执行: collab_prd_sync.py binding-check --req-id {req_id}\n"
+            f"（未完成绑群前禁止 push-preview / meeting）\n"
+            f"详情: {e}"
+        ) from e
+
+    status = binding.get("status")
+    if status != "active":
+        raise RuntimeError(
+            f"联调群未 active（status={status!r}）。"
+            f"请在企微群发送: /init {req_id}，再执行 binding-check。"
+        )
+
+    group_id = binding.get("groupId")
+    if not group_id:
+        raise RuntimeError(f"binding 缺少 groupId: {binding}")
+
+    collab["binding_status"] = status
+    collab["group_id"] = group_id
+    save_state(change_dir, state)
+    append_log(change_dir, f"BINDING ensure ok group_id={group_id}")
+    return str(group_id)
+

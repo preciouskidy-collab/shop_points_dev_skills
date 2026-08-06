@@ -196,6 +196,34 @@
         "max_retries": 3
       },
       {
+        "id": "local-stack-up",
+        "name": "本地联调栈启动",
+        "blocking": false,
+        "artifacts": [
+          "tests/local_stack_report.md"
+        ],
+        "resources": [
+          "playbook-local-stack-up"
+        ],
+        "max_retries": 2
+      },
+      {
+        "id": "local-e2e-test",
+        "name": "本地 E2E（Cursor 浏览器）",
+        "blocking": false,
+        "skip_when": {
+          "impact_field": "frontend_scope",
+          "equals": "none"
+        },
+        "artifacts": [
+          "tests/local_e2e_report.md"
+        ],
+        "resources": [
+          "playbook-local-e2e-browser-test"
+        ],
+        "max_retries": 3
+      },
+      {
         "id": "deploy-approve",
         "name": "部署前审批",
         "blocking": true,
@@ -736,6 +764,32 @@
         "test"
       ],
       "entry": "playbooks/e2e-browser-test.md"
+    },
+    {
+      "id": "playbook-local-stack-up",
+      "name": "本地联调栈启动",
+      "description": "启动本地后端 spring-boot:run 与前端 dev server，供 Cursor 浏览器联调",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "local",
+        "integration",
+        "stack"
+      ],
+      "entry": "playbooks/local-stack-up.md"
+    },
+    {
+      "id": "playbook-local-e2e-browser-test",
+      "name": "本地 E2E（Cursor 内置浏览器）",
+      "description": "使用 cursor-ide-browser MCP 在本地前后端执行 e2e_cases",
+      "version": "0.1.0",
+      "category": "playbooks",
+      "tags": [
+        "e2e",
+        "local",
+        "cursor-browser"
+      ],
+      "entry": "playbooks/local-e2e-browser-test.md"
     },
     {
       "id": "knowledge-frontend-atlas",

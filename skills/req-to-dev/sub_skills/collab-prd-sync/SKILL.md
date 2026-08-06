@@ -1,7 +1,7 @@
 ---
 name: collab-prd-sync
-description: "PRD 反向同步统一入口（修改/更新飞书 PRD 文档都走这里）。链路1 会议纪要→飞书PRD（meeting，init前/无req_id）；链路2 企微联调群→飞书PRD（digest，init后/有req_id）。给出 PRD链接+会议纪要链接、或说『更新飞书PRD/会议纪要更新PRD/整理联调写回PRD』即触发；均为 dry-run 预览→人工对话确认后才写飞书；含 meeting、digest、approve、resync"
-version: "0.4.2"
+description: "PRD 反向同步统一入口。链路1 bootstrap→push-preview→阻塞wait（同一回合）；链路2 digest。含 bootstrap、meeting、wait、digest、approve"
+version: "0.5.0"
 category: req-to-dev
 tags:
   - collab
@@ -15,10 +15,19 @@ tags:
   - 联调
   - 企微
 commands:
+  - bootstrap
+  - binding-check
   - meeting
+  - meeting-revise
+  - push-preview
+  - wait
+  - listen
+  - recover-intent
+  - wait
   - approve
   - digest
   - resync
+  - finalize-plan
   - check-config
 trigger_phrases:
   - 更新飞书 PRD
@@ -70,62 +79,74 @@ trigger_phrases:
 
 ```mermaid
 flowchart LR
-  M[评审会 · 会议纪要 wiki] -->|链路1 meeting| P[飞书 PRD 定稿]
-  P -->|approve 写回| P2[PRD 已更新]
-  P2 -->|run_workflow init| R[产生 req_id]
-  R -->|fetch-prd...| DEV[开发 Pipeline]
-  DEV -->|链路2 digest| C[联调群共识写回 PRD]
-  C -->|approve + resync| DEV
+  M[评审会 · 纪要+PRD] -->|bootstrap| R[req_id + changes/]
+  R -->|/init 绑群| G[企微群]
+  G -->|meeting prepare + Cursor| PV[push-preview]
+  PV -->|阻塞 wait 同一回合| W[意图队列]
+  W -->|approve| P[飞书 PRD 定稿]
+  P -->|advance| DEV[开发 Pipeline]
+  DEV -->|digest| C[联调写回 PRD]
 ```
 
-| 阶段 | 有无 req_id | 命令 | 工作区 |
-|------|-------------|------|--------|
-| **会议纪要 → PRD** | ❌ 尚无 | `meeting` → `approve --prd-url` | `prd-sync/{prd_token}/` |
-| **Pipeline 开发** | ✅ init 后 | `run_workflow init` | `changes/{req_id}/` |
-| **联调群 → PRD** | ✅ 必须 | `digest` → `approve --req-id`（自动 resync） | `changes/{req_id}/collaboration/` |
+| 阶段 | req_id | 命令 | 工作区 |
+|------|--------|------|--------|
+| **会议纪要 → PRD** | ✅ bootstrap 即生成 | `bootstrap` → `meeting` → `push-preview` → **阻塞 `wait`** → `approve` | `changes/{req_id}/collaboration/` |
+| **Pipeline 开发** | ✅ 已有 | `advance`（`auto_advance_after_prd_approve=false` 时手动） | `changes/{req_id}/` |
+| **联调群 → PRD** | ✅ 必须 | `digest` → `approve`（自动 resync） | `changes/{req_id}/collaboration/` |
 
-> **会议纪要更新 PRD 发生在 `init` 之前**，不要要求 req_id，不要 resync。
+> 链路 1 **不再**走 `prd-sync/` 主路径；`meeting-legacy` 仅只读兼容。
 
-## 审批方式（默认：Agent 聊天交互）
+## 审批方式（链路1：主会话阻塞 wait）
 
-`meeting` / `digest` 完成后，`human_summary` 会给出**验证码**。用户在 **Agent 对话**中回复：
-
-```
-确认 patch-001 abc123 approver 周美琪
-```
-
-Agent 代跑 approve（`--chat-confirm` 必须为用户原话；`patch`/`approver` 从确认语解析）：
+1. **`push-preview` 前必须 `binding-check` 通过**
+2. **`push-preview` 后同一回合阻塞 `wait`**（**禁止** `block_until_ms=0` / **禁止**后台 `watch`）
+3. stdout 返回 intent JSON → **同一回合**处理（勿结束对话）
+4. `meeting_revise` 处理完 `push-preview` 后 → **同一回合再 `wait`**
+5. 降级：本对话 `--chat-confirm`；离线 `--headless-listen`
 
 ```bash
-python3 .../collab_prd_sync.py approve \
-  --req-id "<req_id>" \
-  --chat-confirm "确认 patch-001 abc123 approver 周美琪"
+# push-preview 后必做（与 push-preview 同一回合）
+python3 .../collab_prd_sync.py wait --req-id <req_id> --timeout 3600
 ```
 
-链路 1（会议纪要）将 `--req-id` 换成 `--prd-url`；链路 1 不 resync。
+### wait 返回后的固定编排
 
-可选 `--mode terminal`：本机终端输入 `y`（极少使用）。
+| 返回 | 同一回合动作 |
+|------|--------------|
+| `action=approve` | `approve --pull-intent-id <id>` → 链路1 结束 |
+| `action=meeting_revise` | `meeting-revise` → Cursor 写 plan → `finalize-plan` → `push-preview` → **再 `wait`** |
+| `status=timeout` | 立即再跑 `wait`（仍在本回合） |
 
-## 链路 1：会议纪要 → PRD（pre-pipeline）
+> **硬约束**：单轮对话结束后无法靠企微意图唤起 Cursor；禁止 push-preview 后不 wait 就结束回合。
 
-用户给出**会议纪要 URL + PRD URL**即可：
+## 链路 1：会议纪要 → PRD（6 步）
+
+用户给出 **PRD URL + 会议纪要 URL**：
 
 ```bash
 cd <shop_points_dev_skills 根目录>
-python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py meeting \
-  --meeting-url "https://beike.feishu.cn/wiki/xxx" \
-  --prd-url "https://beike.feishu.cn/wiki/yyy"
+# ① bootstrap → 【停】输出 req_id，等用户绑群完成
+python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py bootstrap \
+  --prd-url "https://beike.feishu.cn/wiki/yyy" \
+  --meeting-url "https://beike.feishu.cn/wiki/xxx"
+# ② 企微 /init {req_id} → 用户回复「绑群完成」
+# ③ binding-check（必须通过）
+python3 .../collab_prd_sync.py binding-check --req-id <req_id>
+# ④ meeting → Cursor 写 plan → finalize-plan
+python3 .../collab_prd_sync.py meeting --req-id <req_id>
+python3 .../collab_prd_sync.py finalize-plan --req-id <req_id> --patch patch-001
+# ⑤ push-preview（发群）
+python3 .../collab_prd_sync.py push-preview --req-id <req_id> --patch patch-001
+# ⑥ 同一回合阻塞 wait（禁止结束对话后再等唤起）
+python3 .../collab_prd_sync.py wait --req-id <req_id> --timeout 3600
+# ⑦ 收到 intent → 同一回合 approve 或 meeting-revise 循环
 ```
 
-审批写回见上文「Agent 聊天交互」；**无需 req_id**。
+**Agent 禁止**：bootstrap 后跳过绑群直接 `meeting` / `push-preview`（脚本会拒绝）。
 
-PRD 定稿后，RD 才立项：
+`meeting-revise`：`/整理评审` 后 wait 收到 `meeting_revise` intent 时执行。
 
-```bash
-python3 skills/req-to-dev/scripts/run_workflow.py init \
-  --url "https://beike.feishu.cn/wiki/yyy" \
-  --slug <需求名> --target <项目路径>
-```
+旧 pre-pipeline 入口：`meeting-legacy`（废弃，勿用于新需求）。
 
 ## 链路 2：联调群 → PRD（Pipeline 已 init）
 

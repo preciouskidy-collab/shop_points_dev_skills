@@ -2,7 +2,6 @@
 agent:
   base_url: "http://shop-points-agent.shop-points-test01.ttb.test.ke.com"
   timeout_sec: 30
-  token: ""   # 对应 X-Collab-Token，与 Agent Apollo collabConfig.apiToken 一致
 
 # lark-cli（联调 PRD 读写）
 # 安装: npm install -g @larksuite/cli
@@ -14,6 +13,7 @@ lark_cli:
 
 # 联调群消息 sender 系统号 → 角色（digest 摘要权重）
 collab:
+  auto_advance_after_prd_approve: false   # 链路1 approve 后是否自动 advance
   sender_roles:
     "31449898": RD           # 后端研发
     "31175736": FE           # 前端研发

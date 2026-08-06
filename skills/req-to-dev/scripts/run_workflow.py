@@ -28,6 +28,9 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from slug_utils import generate_req_id, normalize_slug  # noqa: E402
+
 # ─── 常量 ───────────────────────────────────────────────
 
 CHANGES_BASE = Path("changes")
@@ -117,11 +120,18 @@ def _parse_impact_meta(change_dir: Path) -> dict:
 
 def _should_skip_stage(change_dir: Path, stage_def: dict) -> tuple[bool, str]:
     """根据 impact frontmatter 与 skip_when 判断是否跳过阶段"""
+    stage_id = stage_def.get("id", "")
+    meta = _parse_impact_meta(change_dir)
+    integration_mode = meta.get("integration_mode", "local")
+
+    if integration_mode == "local":
+        if stage_id in ("dayu-deploy", "e2e-browser-test"):
+            return True, "integration_mode=local"
+
     skip_when = stage_def.get("skip_when")
     if not skip_when:
         return False, ""
 
-    meta = _parse_impact_meta(change_dir)
     field = skip_when.get("impact_field")
     expected = skip_when.get("equals")
     if field and meta.get(field) == expected:
@@ -222,19 +232,20 @@ def _resolve_slug_or_name(args) -> str:
     if not slug:
         print("ERROR: 需要 --slug 或 --name", file=sys.stderr)
         sys.exit(1)
-    return slug.strip()
+    try:
+        return normalize_slug(slug.strip())
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _generate_req_id(slug: str) -> str:
     """生成 req_id：{YYYYMMDD}-{slug}，冲突时追加 -2, -3 …"""
-    today = datetime.now().strftime("%Y%m%d")
-    base = f"{today}-{slug}"
-    if not (CHANGES_BASE / base).exists():
-        return base
-    n = 2
-    while (CHANGES_BASE / f"{base}-{n}").exists():
-        n += 1
-    return f"{base}-{n}"
+    try:
+        return generate_req_id(slug)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _find_change_dir(name: str) -> Path | None:
@@ -674,9 +685,23 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
 
             for line in plan_approve_prompt_lines(state):
                 print(line)
-            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
+            print()
+            print(">>> 技术方案企微评审（长轮询 + 意图邮箱，同一回合阻塞 wait）：")
+            print("    1. tech-design-prepare → Agent 写 design_plan.json → finalize-design")
+            print("    2. push-preview --patch design-patch-NNN → wait --timeout 3600")
+            print("    3. plan_approve intent → approve-design --pull-intent-id <id>")
+            print("    4. tech_revise intent → tech-revise → 修订 → finalize-design → push-preview → 再 wait")
+            print()
+            print(
+                "    CLI: python3 skills/req-to-dev/sub_skills/collab-tech-design-sync/scripts/"
+                "collab_tech_design_sync.py prepare --req-id <id>"
+            )
+            print(f">>> 仅 Cursor 内审批（降级）: python3 {sys.argv[0]} approve --name {name}")
             print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
         elif next_stage["id"] == "deploy-approve":
+            print(">>> 本地验收通过后，询问用户是否部署大禹测试环境：")
+            print("    - 否 → commit-push → release（integration_mode=local 默认跳过 dayu/e2e）")
+            print("    - 是 → 将 impact.integration_mode 设为 dayu 后 advance dayu-deploy")
             print(">>> 请向用户展示以下内容并请求审批（进入部署）：")
             print("    - 各仓库 git diff 摘要（backend + frontend）")
             print("    - handoff/frontend-handoff.md + handoff/contract-verify-report.md  （如有前端）")

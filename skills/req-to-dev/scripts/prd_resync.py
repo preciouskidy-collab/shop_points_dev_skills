@@ -122,6 +122,12 @@ def run_prd_resync(
         patch_id=patch_id,
         change_summary=tier_analysis.get("change_summary", ""),
     )
+    if regression and regression.get("awaiting_plan_approve"):
+        collab = state.setdefault("collaboration", {})
+        collab["phase"] = "tech_design_review"
+        tdr = collab.setdefault("tech_design_review", {})
+        tdr.pop("ended_at", None)
+        tdr["started_at"] = tdr.get("started_at") or iso_now()
     current_stage_id = stages[state["current_stage"]]["id"]
     needs_collab_reapprove = bool(regression and regression.get("awaiting_plan_approve"))
 

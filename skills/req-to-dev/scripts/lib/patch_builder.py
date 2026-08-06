@@ -721,6 +721,7 @@ def finalize_patch(
     log_message: str,
     digest_prompt: str,
     notify: str,
+    prompt_filename: str = "digest_prompt.md",
 ) -> None:
     plan_path = pdir / "plan.json"
     plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -741,7 +742,7 @@ def finalize_patch(
         encoding="utf-8",
     )
 
-    (pdir / "digest_prompt.md").write_text(digest_prompt, encoding="utf-8")
+    (pdir / prompt_filename).write_text(digest_prompt, encoding="utf-8")
 
     dry_log = pdir / "dry_run.log"
     updates = plan.get("update") or plan.get("updates")
@@ -791,6 +792,7 @@ def finalize_pre_pipeline_patch(
     meta_extra: dict,
     digest_prompt: str,
     notify: str,
+    prompt_filename: str = "digest_prompt.md",
 ) -> None:
     """Pre-Pipeline：会议纪要 → PRD，落盘到 prd-sync/（无 req_id）。"""
     from prd_sync_session import append_session_log, save_session  # noqa: WPS433
@@ -818,7 +820,7 @@ def finalize_pre_pipeline_patch(
         ),
         encoding="utf-8",
     )
-    (pdir / "digest_prompt.md").write_text(digest_prompt, encoding="utf-8")
+    (pdir / prompt_filename).write_text(digest_prompt, encoding="utf-8")
 
     dry_log = pdir / "dry_run.log"
     updates = plan.get("update") or plan.get("updates")

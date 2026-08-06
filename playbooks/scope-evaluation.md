@@ -39,6 +39,10 @@ commands: []
 ---
 frontend_scope: full | partial | none
 api_change: none | extend | new
+integration_mode: local | dayu
+e2e_browser: cursor | agent-browser
+local_backend_url: http://local.ttb.test.ke.com
+local_frontend_url: http://localhost:3000
 mall_scope: full | partial | none
 surfaces: [h5, pc]
 deploy_modules:
@@ -75,6 +79,10 @@ deploy_modules:
 | `mall_scope` | `full` / `partial` / `none` | `none` 时 `deploy_modules` 不含 lottery |
 | `surfaces` | `[h5]`, `[pc]`, `[h5, pc]` | 涉及的前端端 |
 | `deploy_modules` | 大禹模块名列表 | 决定 dayu-deploy 部署哪些项目 |
+| `integration_mode` | `local` / `dayu` | 默认 `local`：跳过 dayu-deploy / e2e-browser-test，走本地联调栈 + Cursor 浏览器 E2E |
+| `e2e_browser` | `cursor` / `agent-browser` | 大禹路径 E2E 浏览器选择，默认 `cursor` |
+| `local_backend_url` | URL | 本地后端地址 |
+| `local_frontend_url` | URL | 本地前端 dev server 地址 |
 
 ## 质量标准
 - 不只列文件名；要说明为什么受影响。

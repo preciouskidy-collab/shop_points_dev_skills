@@ -15,11 +15,102 @@ sys.path.insert(0, str(_LIB))
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # 同目录 import
 
 from collab_check_config import _print_report, run_check  # noqa: E402
+from agent_client import AgentClient  # noqa: E402
 from collab_common import append_log, find_change_dir, iso_now, load_state, normalize_feishu_url, save_state  # noqa: E402
 from lark_cli import _plan_fingerprint, apply_prd, validate_plan_for_apply  # noqa: E402
 from patch_builder import parse_chat_confirm_phrase  # noqa: E402
 from prd_resync import run_prd_resync  # noqa: E402
 from prd_sync_session import append_session_log, resolve_pre_pipeline_patch, save_session  # noqa: E402
+
+
+def _is_link1_meeting(state: dict, meta: dict) -> bool:
+    return (
+        state.get("trigger", {}).get("type") == "meeting"
+        or meta.get("source") == "feishu_meeting"
+    )
+
+
+def _apply_pull_intent(args: argparse.Namespace) -> None:
+    if not getattr(args, "pull_intent_id", None):
+        return
+    client = AgentClient.from_config()
+    intent = client.consume_intent(int(args.pull_intent_id))
+    payload = json.loads(intent.get("payloadJson") or "{}")
+    if not args.patch:
+        args.patch = intent.get("patchId") or payload.get("patch_id")
+    if not args.approver:
+        args.approver = payload.get("approver")
+    if not args.chat_confirm:
+        args.chat_confirm = payload.get("chat_confirm", "")
+    args.mode = "agent-chat"
+
+
+def _load_collab_settings() -> dict:
+    from collab_common import CONFIG_DIR  # noqa: WPS433
+
+    for name in ("agent.local.yaml", "agent.yaml"):
+        p = CONFIG_DIR / name
+        if p.exists():
+            try:
+                import yaml  # type: ignore
+
+                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+                return data.get("collab", {})
+            except ImportError:
+                break
+    secrets = CONFIG_DIR / "secrets.local.json"
+    if secrets.exists():
+        data = json.loads(secrets.read_text(encoding="utf-8"))
+        return data.get("collab", {})
+    return {}
+
+
+def _finish_link1_approve(change_dir: Path, state: dict, req_id: str) -> None:
+    prd_url = state.get("trigger", {}).get("url")
+    if prd_url:
+        from lark_cli import fetch  # noqa: WPS433
+
+        prd_path = change_dir / "request" / "prd.md"
+        prd_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fetch(prd_url, prd_path)
+            append_log(change_dir, "PRD_REVIEW refetch request/prd.md")
+            print("✓ 本地 request/prd.md 已从飞书 refetch")
+        except RuntimeError as e:
+            print(f"WARN: refetch 本地 PRD 失败: {e}")
+
+    collab = state.setdefault("collaboration", {})
+    collab["phase"] = "idle"
+    pr = collab.setdefault("prd_review", {})
+    pr["ended_at"] = iso_now()
+    save_state(change_dir, state)
+    append_log(change_dir, "PRD_REVIEW ended phase=idle")
+
+    try:
+        from collab_push_state import push_state_for_change  # noqa: WPS433
+
+        push_state_for_change(change_dir, state)
+        print("✓ 已 push-state phase=idle")
+    except RuntimeError as e:
+        print(f"WARN: push-state 失败: {e}")
+
+    cfg = _load_collab_settings()
+    if cfg.get("auto_advance_after_prd_approve"):
+        print("\n正在 auto_advance（collab.auto_advance_after_prd_approve=true）...")
+        import subprocess
+
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "run_workflow.py"), "advance", "--name", req_id],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            print(f"WARN: auto advance 失败: {proc.stderr or proc.stdout}")
+        else:
+            print(proc.stdout)
+    else:
+        print("\n--- 链路1 定稿完成 ---")
+        print("phase=idle；开发前请显式 advance 或 run_workflow init 后续阶段")
 
 _CONFIRM_WORDS = ("确认", "同意", "approve", "可写回", "可以写回", "继续写回")
 
@@ -243,6 +334,7 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    link1 = _is_link1_meeting(state, meta)
     try:
         validate_plan_for_apply(plan, allow_append=args.allow_append)
     except RuntimeError as e:
@@ -294,6 +386,8 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
     )
     record = json.loads(approval_path.read_text(encoding="utf-8"))
     record["req_id"] = req_id
+    if getattr(args, "pull_intent_id", None):
+        record["pull_intent_id"] = args.pull_intent_id
     approval_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print("\n正在执行 lark-cli apply（已通过审批）...")
@@ -313,7 +407,7 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
     meta["approval_note"] = note
     meta["confirmed_by"] = confirmer
     meta["approval_mode"] = args.mode
-    meta["ready_for_resync"] = True
+    meta["ready_for_resync"] = not link1
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
     collab = state.setdefault("collaboration", {})
@@ -322,6 +416,11 @@ def _approve_pipeline_collab(args: argparse.Namespace) -> int:
     append_log(change_dir, f"COLLAB approve {args.patch} mode={args.mode} approver={args.approver}")
 
     print("✅ PRD 已更新")
+
+    if link1:
+        _finish_link1_approve(change_dir, state, req_id)
+        return 0
+
     if not args.skip_resync:
         print(f"\n正在自动 prd resync · {args.patch} ...")
         try:
@@ -413,7 +512,14 @@ def main() -> int:
         "--skip-preflight", action="store_true",
         help="跳过凭证 / 权限预检（调试用）",
     )
+    parser.add_argument(
+        "--pull-intent-id",
+        type=int,
+        default=None,
+        help="从 Agent 消费 approval_intent 并自动填充 patch/approver/chat-confirm",
+    )
     args = parser.parse_args()
+    _apply_pull_intent(args)
     _apply_chat_confirm_args(args)
 
     if not args.patch or not args.approver:

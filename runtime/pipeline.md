@@ -17,7 +17,10 @@ backend-coding → frontend-coding → frontend-handoff（契约对齐）
     ↓
 backend-review → frontend-review → backend-test-local
     ↓
+local-stack-up → local-e2e-test          # 默认 integration_mode=local，Cursor 内置浏览器
+    ↓
 [deploy-approve] → commit-push → dayu-deploy → e2e-browser-test → release
+                                              # dayu/e2e 在 local 模式下跳过
 ```
 
 **为何先 api-contract 再并行详设？**
