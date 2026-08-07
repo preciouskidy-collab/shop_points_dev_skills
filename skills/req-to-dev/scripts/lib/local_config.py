@@ -136,6 +136,20 @@ def lark_cli_subprocess_env() -> dict[str, str]:
     return env
 
 
+def load_test_env_app() -> tuple[str, str]:
+    """测试环境 H5/CAS 登录凭证：secrets.local.json → test_env_app。"""
+    secrets = load_secrets()
+    block = secrets.get("test_env_app") or {}
+    username = str(block.get("username", "")).strip()
+    password = str(block.get("password", "")).strip()
+    return username, password
+
+
+def test_env_app_configured() -> bool:
+    user, pwd = load_test_env_app()
+    return bool(user and pwd and not user.startswith("<"))
+
+
 def load_merged_yaml_section(section: str) -> dict[str, Any]:
     """合并 agent.yaml.example + agent.local.yaml + secrets.local.json 中的某一段。"""
     merged: dict[str, Any] = {}

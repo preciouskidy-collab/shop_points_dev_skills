@@ -24,6 +24,11 @@
 | frontend-review | MUST FIX 问题 | Agent 修复，重跑审查 | 2 |
 | backend-test-local | 测试失败 | Agent 修复测试，重跑 | 3 |
 | backend-test-local | 接口测试需要入参 | 暂停询问用户提供 Cookie + 请求参数 | — |
+| local-stack-up | nginx 502 / bundle 截断 | 确认 :9393 webpack 已起；查 nginx error.log `proxy_temp` 权限；见 `playbook-local-stack-troubleshooting` | 2 |
+| local-stack-up | lottery 编译失败 | `mvn install -pl shop-points-lottery-start -am -DskipTests` 后重试 | 2 |
+| local-e2e-test | CAS 登录失败 / 白屏 | 起 CAS 反代（80→8080）；入口必须带 `:8088` | 2 |
+| local-e2e-test | order/preview 403 | 确认 nginx `activity-proxy` 已剥 Origin；见排障文档 | 2 |
+| local-e2e-test | 用例阻塞（无混合支付商品） | 记录 `local_e2e_report.md`，向 PM 要测试商品/门店 | 0 |
 | commit-push | push 失败（冲突） | 暂停人工解决冲突后重试 | 2 |
 | dayu-deploy | 部署失败 / 刷新后非运行中 | 查日志，修复后重新 commit-push → dayu-deploy | 3 |
 | dayu-deploy | 大禹登录失败 | 检查 secrets.local.json | — |

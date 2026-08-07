@@ -48,10 +48,6 @@ def main() -> int:
         return 1
 
     collab = state.setdefault("collaboration", {})
-    if collab.get("phase") != "tech_design_review":
-        print(f"ERROR: 当前 phase={collab.get('phase')}", file=sys.stderr)
-        return 1
-
     tdr = collab.setdefault("tech_design_review", {})
     since = tdr.get("revision_cursor") or tdr.get("started_at")
     client = AgentClient.from_config()

@@ -50,10 +50,10 @@ python3 .../collab_tech_design_sync.py wait --req-id <req_id> --timeout 3600
 ## 企微确认语
 
 ```
-确认方案 design-patch-001 <nonce> approver <姓名>
+确认 design-patch-001 <nonce> approver <姓名>
 ```
 
-修订指令：`/整理方案` 或 `/整理技术方案`
+修订指令：`/整理评审`（与 PRD 评审相同）
 
 ## design_plan.json 格式
 

@@ -1,0 +1,26 @@
+# CAS 登录回跳反代（本机 80 → lottery 8080）
+# 复制到 /tmp/cas-nginx/cas.conf 后用 sudo 启动：
+#   sudo /opt/homebrew/bin/nginx -p /tmp/cas-nginx -c /tmp/cas-nginx/cas.conf
+# 注意：proxy_pass 行末尾不要加反斜杠
+
+worker_processes 1;
+error_log /tmp/cas-nginx/logs/error.log;
+pid /tmp/cas-nginx/nginx.pid;
+
+events { worker_connections 1024; }
+
+http {
+  server {
+    listen 80;
+    server_name local.ttb.test.ke.com;
+
+    location / {
+      proxy_pass http://127.0.0.1:8080;
+      proxy_http_version 1.1;
+      proxy_set_header Host local.ttb.test.ke.com;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+}

@@ -96,7 +96,7 @@ def push_preview(
                 "",
                 f"> 确认方案请回复：`{confirm}`",
                 "",
-                f"> 需修订请发送：`/整理方案`",
+                f"> 需修订请发送：`/整理评审`",
             ]
         )
     else:
@@ -121,6 +121,11 @@ def push_preview(
     )
 
     collab = state.setdefault("collaboration", {})
+    if is_design:
+        collab["phase"] = "tech_design_review"
+    elif collab.get("phase") not in ("prd_review", "tech_design_review"):
+        collab["phase"] = "prd_review"
+
     now = iso_now()
     if is_design:
         tdr = collab.setdefault("tech_design_review", {})
@@ -133,6 +138,13 @@ def push_preview(
         pr["last_preview_at"] = now
         pr["revision_cursor"] = now
     save_state(change_dir, state)
+
+    try:
+        from collab_push_state import push_state_for_change  # noqa: WPS433
+
+        push_state_for_change(change_dir, state)
+    except RuntimeError as e:
+        print(f"WARN: push-state 失败: {e}")
 
     print(f"✓ preview 已注册: {patch_id} nonce={nonce}")
     print(f"✓ Webhook 已发送至已绑定群 group_id={group_id}")

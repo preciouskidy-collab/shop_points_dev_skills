@@ -27,12 +27,12 @@ def new_approval_nonce() -> str:
 
 
 def design_chat_confirm_phrase(patch_id: str, nonce: str, approver_placeholder: str = "<姓名>") -> str:
-    return f"确认方案 {patch_id} {nonce} approver {approver_placeholder}"
+    return f"确认 {patch_id} {nonce} approver {approver_placeholder}"
 
 
 def parse_design_chat_confirm_phrase(text: str) -> dict[str, str] | None:
     m = re.search(
-        r"确认方案\s+(design-patch-\d+)\s+([a-fA-F0-9]+)\s+approver\s+(\S+)",
+        r"确认(?:方案)?\s+((?:design-)?patch-\d+)\s+([a-fA-F0-9]+)\s+approver\s+(\S+)",
         text.strip(),
         re.I,
     )
@@ -238,7 +238,7 @@ def build_human_summary_design(
             "请在 **企微群**回复以下格式以确认技术方案：",
             f"  `{hint}`",
             "",
-            "需修订请发送：`/整理方案`",
+            "需修订请发送：`/整理评审`",
         ]
     )
     return "\n".join(lines) + "\n"

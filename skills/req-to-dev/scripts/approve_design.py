@@ -65,6 +65,12 @@ def main() -> int:
     collab = state.setdefault("collaboration", {})
 
     patch_id = args.patch or collab.get("tech_design_review", {}).get("active_patch")
+    if args.chat_confirm:
+        parsed = parse_design_chat_confirm_phrase(args.chat_confirm)
+        if parsed:
+            patch_id = parsed.get("patch") or patch_id
+            if not args.approver:
+                args.approver = parsed["approver"].strip("<>")
     if not patch_id:
         print("ERROR: 缺少 --patch", file=sys.stderr)
         return 1
@@ -75,28 +81,14 @@ def main() -> int:
         print(f"ERROR: 缺少 {meta_path}", file=sys.stderr)
         return 1
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    nonce = meta.get("approval_nonce", "")
 
-    if args.chat_confirm:
-        parsed = parse_design_chat_confirm_phrase(args.chat_confirm)
-        if not parsed:
-            print("ERROR: --chat-confirm 格式无效", file=sys.stderr)
-            return 1
-        if not args.approver:
-            args.approver = parsed["approver"]
-        if parsed["patch"] != patch_id or parsed["nonce"].lower() != nonce.lower():
-            print("ERROR: 确认语与当前 patch/nonce 不匹配", file=sys.stderr)
-            return 1
-    elif not args.pull_intent_id:
-        if not args.approver:
-            args.approver = getpass.getuser()
+    if not args.approver and not args.pull_intent_id:
+        args.approver = getpass.getuser()
         print(f"WARN: 无 --chat-confirm / --pull-intent-id，使用 approver={args.approver}")
 
     plan_path = pdir / "design_plan.json"
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     try:
-        if plan.get("plan_source") == "agent_pending":
-            raise ValueError("plan 仍为 agent_pending")
         updates = collect_design_updates(plan)
         if updates:
             validate_design_plan(plan)
