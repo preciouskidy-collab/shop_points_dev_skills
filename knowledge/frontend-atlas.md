@@ -60,6 +60,25 @@ commands: []
 https://point-pc.ttb.test.ke.com/integral2/activity-config/city
 ```
 
+### 本地联调入口（Harness 方案 B）
+
+```
+http://point-pc.ttb.test.ke.com:8089/integral2/activity-config/city
+```
+
+启动（全栈联调）：
+
+```bash
+python3 skills/req-to-dev/scripts/local_stack_up.py \
+  --req-id <id> --surfaces h5,pc --pc-nginx-port 8089
+python3 skills/req-to-dev/scripts/local_stack_check.py --req-id <id> --surfaces h5,pc
+```
+
+- hosts 需含：`127.0.0.1 point-pc.ttb.test.ke.com`
+- `/shop-points/*` → 本地 shop-points `:8081`；`/api`、`/loginUser/info` 走远程 agent-lego **test01**
+- 依赖安装：`cd client && npm ci`（勿 `npm install`，避免 lockfile 被升级）
+- 本地启动：`cd client && BUILD_ENV=development npm start`（:3000）
+
 ---
 
 ## H5 端：`store-integral-h5`

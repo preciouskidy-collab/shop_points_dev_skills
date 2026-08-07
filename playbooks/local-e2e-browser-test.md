@@ -23,22 +23,35 @@ commands: []
 ## 前置条件
 
 - `tests/local_stack_report.md` 记录栈已启动
-- 排障文档 §二 检查清单已通过（尤其 bundle 完整、preview 非 403）
+- **`local_stack_check.py --surfaces h5,pc` exit 0**
+- 排障文档 §二 检查清单已通过（尤其 webpack 端口、bundle 完整、preview/shop-points 非 CORS 403）
 - `handoff/frontend-handoff.md` §6 用例已就绪
 - `secrets.local.json` → `test_env_app` 可登录
 - CAS 反代（本机 80）已起（若需浏览器 CAS 登录）
 
-## 测试入口（方案 B · 推荐）
+## 测试入口（按 impact surfaces 选择）
 
-**服务基金积分商城**（本 Pipeline 本地 E2E 入口）：
+### H5（`surfaces` 含 `h5`）
+
+**服务基金积分商城**：
 
 ```
 http://integral.ttb.test.ke.com:8088/fuwujin-mall/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101
 ```
 
+### PC（`surfaces` 含 `pc`）
+
+**活动配置等城市维度管理**：
+
+```
+http://point-pc.ttb.test.ke.com:8089/integral2/activity-config/city
+```
+
+PC 登录依赖远程 agent-lego（`/api`、`/loginUser/info`），需 test01 可达。
+
 | 不要用的入口 | 原因 |
 |--------------|------|
-| `localhost:9393` | 绕过 nginx，与真实链路不一致 |
+| `localhost:9393` / `localhost:3000` | 绕过 nginx，与真实链路不一致 |
 | `integral.ttb.test.ke.com` 无端口 | hosts 指向本机 80，是 CAS/lottery 不是 H5 |
 | `/store-points/index` | 门店积分首页，非服务基金商城 |
 

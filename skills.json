@@ -770,8 +770,8 @@
     {
       "id": "playbook-local-stack-up",
       "name": "本地联调栈启动",
-      "description": "启动本地后端 spring-boot:run 与前端 dev server，供 Cursor 浏览器联调",
-      "version": "0.1.0",
+      "description": "启动本地后端 spring-boot:run 与前端 dev server + nginx 双网关；含 npm ci 与健康检查",
+      "version": "0.5.0",
       "category": "playbooks",
       "tags": [
         "local",
@@ -783,8 +783,8 @@
     {
       "id": "playbook-local-stack-troubleshooting",
       "name": "本地联调栈踩坑排障",
-      "description": "local-stack-up / local-e2e-test 阶段踩坑沉淀：hosts、CAS 80、bundle 截断、CORS 403、验收清单",
-      "version": "1.0.0",
+      "description": "local-stack-up / local-e2e-test 阶段踩坑沉淀：surfaces 裁剪、npm ci、CORS 403、502 假启动、验收清单",
+      "version": "1.1.0",
       "category": "playbooks",
       "tags": [
         "local",

@@ -34,15 +34,17 @@ def main() -> int:
 
     nginx_bin = find_nginx_bin()
     prefix = nginx_prefix(change_dir)
-    conf = prefix / "integral-local.conf"
-    if nginx_bin and conf.exists():
-        subprocess.run(
-            [nginx_bin, "-s", "stop", "-p", str(prefix), "-c", str(conf)],
-            capture_output=True,
-        )
-        print("✓ nginx 已 stop")
+    for conf_name in ("local-gateway.conf", "integral-local.conf"):
+        conf = prefix / conf_name
+        if nginx_bin and conf.exists():
+            subprocess.run(
+                [nginx_bin, "-s", "stop", "-p", str(prefix), "-c", str(conf)],
+                capture_output=True,
+            )
+            print(f"✓ nginx 已 stop ({conf_name})")
+            break
 
-    for key in ("frontend", "lottery"):
+    for key in ("pc_frontend", "frontend", "shop_points", "lottery"):
         block = state.get(key) or {}
         pid = block.get("pid")
         if pid:

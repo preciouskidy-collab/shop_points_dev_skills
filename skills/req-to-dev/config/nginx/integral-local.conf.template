@@ -1,5 +1,5 @@
-# 本机联调网关（方案 B）— 由 local_stack_up.py 渲染，勿手改生成文件
-# 模拟 integral.ttb.test.ke.com 测试环境：页面 → webpack dev，API → 本地/远程后端
+# 本机联调网关（方案 B）— 已迁移至 local-gateway.conf.template
+# 本文件保留仅供对照，local_stack_up.py 不再渲染此模板。
 
 worker_processes 1;
 error_log {{NGINX_PREFIX}}/logs/error.log warn;
