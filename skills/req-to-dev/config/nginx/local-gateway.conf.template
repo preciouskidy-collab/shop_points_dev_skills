@@ -1,0 +1,41 @@
+# 本机联调网关（方案 B）— 由 local_stack_up.py 渲染，勿手改生成文件
+# H5: integral.ttb.test.ke.com  PC: point-pc.ttb.test.ke.com
+
+worker_processes 1;
+error_log {{NGINX_PREFIX}}/logs/error.log warn;
+pid {{NGINX_PREFIX}}/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    access_log {{NGINX_PREFIX}}/logs/access.log;
+    proxy_temp_path {{NGINX_PREFIX}}/proxy_temp;
+    client_body_temp_path {{NGINX_PREFIX}}/client_body_temp;
+
+    upstream frontend_dev {
+        server 127.0.0.1:{{FRONTEND_PORT}};
+    }
+
+    upstream pc_webpack {
+        server 127.0.0.1:{{PC_PORT}};
+    }
+
+    upstream lottery_local {
+        server 127.0.0.1:{{LOTTERY_PORT}};
+    }
+
+    upstream shop_points_local {
+        server 127.0.0.1:{{SHOP_POINTS_PORT}};
+    }
+
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+
+{{H5_SERVER_BLOCK}}
+
+{{PC_SERVER_BLOCK}}
+}
