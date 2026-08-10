@@ -161,10 +161,13 @@ def plan_approve_prompt_lines(state: dict) -> list[str]:
             "    - 审批后：按 tasks 改前端（或极小改动）→ 快进到 E2E 复测",
         ]
     return [
-        ">>> 请向用户展示以下内容并请求审批（协议 + 详设，进入编码）：",
+        ">>> 请向用户展示以下内容（协议 + 详设，**仅文档，尚未编码**）：",
         "    - request/spec.md                    需求规格",
-        "    - impact/impact.md                   影响范围（api_change / frontend_scope）",
+        "    - impact/impact.md                   影响范围（api_change / frontend_scope / integration_mode）",
         "    - handoff/api-contract.yaml          API 协议（api_change≠none）",
-        "    - tech-design/tech-design.md       后端技术方案",
+        "    - tech-design/tech-design.md         后端技术方案",
         "    - tech-design/frontend-design.md     前端技术设计（frontend_scope≠none）",
+        "",
+        ">>> 然后必须企微推送技术方案并同一回合阻塞 wait（见 guardrails/pipeline-redlines.md R1/R2）",
+        ">>> plan-approve 通过前禁止修改目标仓库业务代码",
     ]

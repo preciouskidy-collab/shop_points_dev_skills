@@ -14,6 +14,12 @@ AGENT_LOCAL_PATH = CONFIG_DIR / "agent.local.yaml"
 LARK_CLI_HOME = CONFIG_DIR / "lark-cli-home"
 LARK_CLI_CONFIG_PATH = LARK_CLI_HOME / ".lark-cli" / "config.json"
 
+# Pipeline 本地/E2E 默认测试数据（可被 secrets.local.json → test_env_fixtures 覆盖）
+DEFAULT_TEST_CITY_NAME = "天津市"
+DEFAULT_TEST_CITY_CODE = 120000
+DEFAULT_TEST_SHOP_CODE = "TJDY0101"
+DEFAULT_TEST_SHOP_CODE_INNER = "TJDY0101"
+
 # 历史路径（只读回退，新配置请写入 secrets.local.json）
 LEGACY_FEISHU_CONFIG = Path.home() / ".shop-points-dev-skills" / "feishu-config.json"
 LEGACY_LARK_CLI_CONFIG = Path.home() / ".lark-cli" / "config.json"
@@ -148,6 +154,31 @@ def load_test_env_app() -> tuple[str, str]:
 def test_env_app_configured() -> bool:
     user, pwd = load_test_env_app()
     return bool(user and pwd and not user.startswith("<"))
+
+
+def load_test_env_fixtures() -> dict[str, Any]:
+    """E2E / 联调默认测试数据：constants + secrets.local.json → test_env_fixtures。"""
+    fixtures: dict[str, Any] = {
+        "city_name": DEFAULT_TEST_CITY_NAME,
+        "city_code": DEFAULT_TEST_CITY_CODE,
+        "shop_code": DEFAULT_TEST_SHOP_CODE,
+        "shop_code_inner_test": DEFAULT_TEST_SHOP_CODE_INNER,
+    }
+    secrets = load_secrets()
+    override = secrets.get("test_env_fixtures")
+    if isinstance(override, dict):
+        for key in fixtures:
+            if override.get(key) is not None:
+                fixtures[key] = override[key]
+    return fixtures
+
+
+def test_env_fixtures_summary() -> str:
+    f = load_test_env_fixtures()
+    return (
+        f"城市 {f['city_name']}（cityCode={f['city_code']}），"
+        f"门店 {f['shop_code']}"
+    )
 
 
 def load_merged_yaml_section(section: str) -> dict[str, Any]:

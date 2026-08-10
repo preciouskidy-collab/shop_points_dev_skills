@@ -14,11 +14,13 @@ commands: []
 
 ## 适用时机
 
-`deploy-approve` 人工审批通过后，**部署前**执行。
+`local-e2e-test`（或 `e2e-browser-test`，dayu 路径）完成后，`advance` 进入本阶段时执行。
+
+> **v0.7+**：已取消 `deploy-approve`；本地验收通过后 **无需** 额外人工审批即可 commit-push。
 
 ## 前置条件
 
-- `deploy-approve` 已通过
+- 本地 E2E / 审查阶段已完成（或用户明确要求跳过验收）
 - 各仓库代码已审查完成，工作区有未提交变更
 
 ## Commit Message 规范

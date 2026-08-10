@@ -77,6 +77,18 @@ def main() -> int:
             "meeting-revise → 写 plan → finalize-plan → push-preview → wait",
             file=sys.stderr,
         )
+    elif action == "tech_revise":
+        print(
+            "ℹ tech_revise 已落盘；请在主会话同一回合："
+            "collab_tech_design_sync tech-revise → 写 design_plan → finalize-design "
+            "→ push-preview → wait",
+            file=sys.stderr,
+        )
+    elif action == "plan_approve":
+        print(
+            "ℹ plan_approve 已落盘；请在主会话同一回合：approve-design --pull-intent-id",
+            file=sys.stderr,
+        )
 
     if args.start_listener:
         pid = start_listener(args.req_id, auto_approve=True, scripts_dir=_SCRIPTS)

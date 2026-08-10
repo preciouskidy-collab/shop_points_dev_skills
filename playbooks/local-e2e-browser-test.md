@@ -29,15 +29,42 @@ commands: []
 - `secrets.local.json` → `test_env_app` 可登录
 - CAS 反代（本机 80）已起（若需浏览器 CAS 登录）
 
+## 测试可用数据（默认）
+
+见 `knowledge/test-env-topology.md` §测试可用数据。Pipeline **默认**：
+
+| 维度 | 值 |
+|------|-----|
+| 城市 | **天津市**（`cityCode=120000`） |
+| 门店 | **TJDY0101** |
+
+- PC：规则城市筛 **天津市**；上传 Excel 门店列 `TJDY0101`
+- H5：URL 已带 `shopCode=TJDY0101&shopCodeInnerTest=TJDY0101`
+
 ## 测试入口（按 impact surfaces 选择）
 
 ### H5（`surfaces` 含 `h5`）
 
-**服务基金积分商城**：
+**门店积分 V2 首页**（贝壳币、活动卡片等）：
+
+```
+http://integral.ttb.test.ke.com:8088/store-pointsV2/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101
+```
+
+**贝壳币子页**（从首页「尊享权益」贝壳币 icon 进入，或直接深链）：
+
+```
+http://integral.ttb.test.ke.com:8088/store-points/beikebi/index?shopCode=TJDY0101
+http://integral.ttb.test.ke.com:8088/store-points/beikebi/history?shopCode=TJDY0101
+```
+
+**服务基金积分商城**（混合支付等，非贝壳币主路径）：
 
 ```
 http://integral.ttb.test.ke.com:8088/fuwujin-mall/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101
 ```
+
+详见 `knowledge/test-env-topology.md` §H5 贝壳币页面。
 
 ### PC（`surfaces` 含 `pc`）
 
@@ -68,8 +95,45 @@ PC 登录依赖远程 agent-lego（`/api`、`/loginUser/info`），需 test01 �
 
 1. 打开 H5 入口（**:8088**）→ 若跳 CAS：
    - 员工 → 账号登录 → `test_env_app` 工号密码
-2. 或：`ab_h5_bypass_http.py`（将 `H5_URL` 改为带 `:8088` 的 fuwujin-mall 入口）
+2. 或：`ab_h5_bypass_http.py`（`H5_URL` 改为 `:8088` 的 **store-pointsV2** 或 fuwujin-mall 入口）
 3. CAS 回跳依赖本机 80 CAS 反代（见排障文档 §四）
+
+## 含文件上传的 E2E（企微通知 + 阻塞 wait）
+
+**适用**：Excel 上传、S3 附件类（如 PC「上传贝壳币」）。Cursor 浏览器 **无法** 程序化 `input[type=file]`。
+
+**主路径（企微 + 同一回合 wait）** — 详见 `playbooks/e2e-upload-collab.md`：
+
+| 步骤 | 负责人 | 动作 |
+|------|--------|------|
+| 1 | Agent | 打开 PC 弹窗，确认账期/城市 |
+| 2 | Agent | `collab_e2e_upload.py notify --req-id <id> --label "..."` → 企微推送 |
+| 3 | Agent | **同一回合** `collab_e2e_upload.py wait --timeout 3600`（**禁止结束对话**） |
+| 4 | **用户** | 企微群选文件上传后回复 `已上传` 或 notify 中的确认语 |
+| 5 | Agent | 收到 `upload_confirm` → snapshot → 点「确定」→ 继续验收 |
+
+```bash
+python3 skills/req-to-dev/scripts/collab_e2e_upload.py notify \
+  --req-id <req_id> --label "上传贝壳币 Excel"
+python3 skills/req-to-dev/scripts/collab_e2e_upload.py wait \
+  --req-id <req_id> --timeout 3600
+```
+
+**禁止**：在 Cursor 对话回复「已上传」代替企微确认；Agent API 不可用则阻塞，不得降级。
+
+**测试 Excel**
+
+- 复制官方模板（勿用 openpyxl 等改写，易破坏 EasyExcel 解析）
+- 默认门店列：`TJDY0101`；城市：天津市 `120000`
+- 可放在 `changes/<req_id>/tests/`（如 `e2e_kecoin_TJDY0101.xlsx`）
+
+**PC 上传后 H5 联动验收**
+
+1. 打开 `store-pointsV2/index` → 首页贝壳币 icon → `beikebi/index`
+2. 选择账期（如 `2026M9`）→ 活动卡片应含「线下活动配置」及实发/预估文案
+3. 进入 `beikebi/history` → 展开对应账期，应有发币明细行
+
+**明细无当月账期**（主页有卡片、history 缺账期）：读 `playbooks/apollo-mock-time.md`，调整 TEST Apollo `mockCurrentTime` 并选 **业务开关** 发布。
 
 ## 步骤
 
@@ -88,6 +152,7 @@ PC 登录依赖远程 agent-lego（`/api`、`/loginUser/info`），需 test01 �
 | serverError 403 | §坑 4（CORS） |
 | 登录后白屏 | §坑 5（CAS 80） |
 | 无支付方式区块 | §坑 8（preview 失败或测试数据） |
+| history 无当月账期 / monthPeriodList 缺账期 | `apollo-mock-time.md`（mock 时间 + 业务开关发布） |
 
 ## 质量标准
 

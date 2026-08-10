@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from collab_common import append_log, iso_now, save_state
+from collab_wecom import REVISE_COMMAND_TECH
 
 DESIGN_TARGETS = (
     "handoff/api-contract.yaml",
@@ -188,7 +189,7 @@ def build_human_summary_design(
     previews: dict[str, str] | None = None,
 ) -> str:
     lines = [
-        f"# {patch_id} 技术方案预览 · `{req_id}`",
+        f"# {patch_id} 技术方案评审 · `{req_id}`",
         "",
         f"验证码: `{approval_nonce}`",
         "",
@@ -238,7 +239,7 @@ def build_human_summary_design(
             "请在 **企微群**回复以下格式以确认技术方案：",
             f"  `{hint}`",
             "",
-            "需修订请发送：`/整理评审`",
+            "需修订请发送：`" + REVISE_COMMAND_TECH + "`（技术方案专用）",
         ]
     )
     return "\n".join(lines) + "\n"

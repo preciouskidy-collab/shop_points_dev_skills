@@ -53,12 +53,13 @@
 
 ## 人工审批点
 
-Pipeline 中有 **两个阻塞点**（均必须人工）：
+Pipeline 中有 **一个阻塞点**（必须人工）：
 
-| 节点 | 触发条件 | 审批内容 | 操作 |
-|------|----------|----------|------|
-| plan-approve | 必经 | spec + impact + api-contract + tech-design + frontend-design | 通过 → backend-coding / 驳回 → scope-eval |
-| deploy-approve | 必经 | 各仓 diff + FDH + deploy_modules + 审查报告 | 通过 → commit-push / 拒绝 → 终止或人工修复 |
+| 节点 | Pipeline stage | 企微 phase | 审批内容 | 操作 |
+|------|----------------|------------|----------|------|
+| 技术方案评审 | `plan-approve` | `tech_design_review` | spec + impact + api-contract + tech-design + frontend-design | 企微确认 → `approve-design` → backend-coding / 驳回 → scope-eval |
+
+`local-e2e-test` 通过后 **无** `deploy-approve`，`advance` 直接进入 `commit-push`。
 
 驳回时运行 `run_workflow.py reject --reason "<修改意见>"`，Pipeline 回退到 scope-eval，重新执行 scope-eval → api-contract → tech-design → frontend-design → plan-approve。
 
@@ -83,3 +84,5 @@ plan-approve(blocked) → reject → scope-eval(running) → tech-design(running
 | 标记失败 | `run_workflow.py fail --name <name> --reason "..."` | 触发重试或升级 |
 | 审批通过 | `run_workflow.py approve --name <name>` | 推进到 coding |
 | 审批驳回 | `run_workflow.py reject --name <name> --reason "..."` | 回退到 scope-eval |
+| wait 加了 `--action` 导致 `/整理评审` 无响应 | 停止错误 wait → `collab_prd_sync.py wait --req-id <id> --timeout 3600`（无 `--action`） | 见 `guardrails/pipeline-redlines.md` R2.2 |
+| 队列遗留 intent | `collab_prd_sync.py recover-intent --req-id <id>` | 落盘 inbox 后同一回合处理 |

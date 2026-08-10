@@ -23,6 +23,11 @@ from collab_common import (  # noqa: E402
 )
 from collab_listener import is_listener_running, start_listener, stop_listener  # noqa: E402
 from patch_builder import chat_confirm_phrase  # noqa: E402
+from collab_wecom import (  # noqa: E402
+    REVISE_COMMAND_PRD,
+    REVISE_COMMAND_TECH,
+    push_preview_wait_footer,
+)
 from design_plan_builder import design_chat_confirm_phrase  # noqa: E402
 
 
@@ -90,13 +95,15 @@ def push_preview(
     if is_design:
         markdown = "\n".join(
             [
-                f"### 技术方案预览 · `{req_id}` · {patch_id}",
+                f"### 技术方案评审 · `{req_id}` · {patch_id}",
                 "",
                 _excerpt(summary, 1200),
                 "",
                 f"> 确认方案请回复：`{confirm}`",
                 "",
-                f"> 需修订请发送：`/整理评审`",
+                f"> 需修订请发送：`{REVISE_COMMAND_TECH}`（技术方案专用，勿用 {REVISE_COMMAND_PRD}）",
+                "",
+                "> 可在群里先补充修订意见，再发上述口令。",
             ]
         )
     else:
@@ -108,7 +115,7 @@ def push_preview(
                 "",
                 f"> PM 确认写回请回复：`{confirm}`",
                 "",
-                f"> 需修订请发送：`/整理评审`",
+                f"> 需修订请发送：`{REVISE_COMMAND_PRD}`",
             ]
         )
     client.notify(
@@ -194,22 +201,9 @@ def main() -> int:
             print(f"ERROR: 无头监听启动失败: {e}", file=sys.stderr)
             return 1
 
-    cli = (
-        "python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py wait "
-        f"--req-id {args.req_id} --timeout 3600"
-    )
-    print("\n--- 下一步（主会话 Agent 必做 · 同一回合勿结束）---")
-    print("在本对话 **阻塞** 执行 wait（禁止 block_until_ms=0 / 禁止后台 watch）：")
-    print(f"  {cli}")
-    print("")
-    print("stdout 返回 intent JSON 后（同一回合内立即处理）：")
-    print("  action=approve         → approve --pull-intent-id <id>")
-    print("  action=meeting_revise  → meeting-revise → 写 plan → finalize-plan → push-preview → 再 wait")
-    print("  action=plan_approve    → approve-design --pull-intent-id <id>")
-    print("  action=tech_revise     → tech-revise → 写 design_plan → finalize-design → push-preview → 再 wait")
-    print("  status=timeout         → 同一回合立即再跑 wait")
-    print("")
-    print("禁止：本回合结束后指望企微意图唤起对话（单轮结束无法唤起）。")
+    phase = load_state(find_change_dir(args.req_id)).get("collaboration", {}).get("phase")
+    for line in push_preview_wait_footer(args.req_id, phase=phase):
+        print(line)
     return 0
 
 

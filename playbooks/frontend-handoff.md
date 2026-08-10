@@ -44,7 +44,7 @@ commands: []
 | 文件 | 说明 |
 |------|------|
 | `handoff/contract-verify-report.md` | 对齐结论与 delta 列表 |
-| `handoff/frontend-handoff.md` | E2E / UI 清单（供 deploy-approve、e2e-browser-test） |
+| `handoff/frontend-handoff.md` | E2E / UI 清单（供 local-e2e-test、commit-push） |
 | `handoff/api-contract.yaml` | 必要时更新为 verified |
 
 `contract-verify-report.md` 模板：

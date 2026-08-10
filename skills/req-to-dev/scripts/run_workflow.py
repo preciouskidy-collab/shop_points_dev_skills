@@ -284,6 +284,12 @@ def _find_change_dir(name: str) -> Path | None:
     return sorted(candidates, reverse=True)[0]
 
 
+# 已从 pipeline 移除的阶段 → 自动迁移到的后继 stage
+_REMOVED_STAGE_SUCCESSOR: dict[str, str] = {
+    "deploy-approve": "commit-push",
+}
+
+
 def _sync_stages_with_config(state: dict) -> dict:
     """将 state.stages 与 skills.json 阶段顺序对齐，保留各阶段运行状态。"""
     old_by_id = {s["id"]: s for s in state.get("stages", [])}
@@ -315,11 +321,23 @@ def _sync_stages_with_config(state: dict) -> dict:
             })
 
     state["stages"] = new_stages
-    if current_id:
+    new_ids = {s["id"] for s in new_stages}
+    if current_id and current_id in new_ids:
         for i, s in enumerate(new_stages):
             if s["id"] == current_id:
                 state["current_stage"] = i
                 break
+    elif current_id in _REMOVED_STAGE_SUCCESSOR:
+        removed = old_by_id.get(current_id, {})
+        successor_id = _REMOVED_STAGE_SUCCESSOR[current_id]
+        for i, s in enumerate(new_stages):
+            if s["id"] != successor_id:
+                continue
+            state["current_stage"] = i
+            if removed.get("status") in ("running", "retrying"):
+                s["status"] = "running"
+                s["started_at"] = s.get("started_at") or datetime.now().isoformat()
+            break
     return state
 
 
@@ -656,6 +674,18 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
             # 递归推进
             return _advance_to_next(change_dir, state, next_idx, name)
 
+    if next_def["id"] == "backend-coding":
+        _LIB = _SCRIPT_DIR / "lib"
+        if str(_LIB) not in sys.path:
+            sys.path.insert(0, str(_LIB))
+        from pipeline_gates import gate_before_coding  # noqa: WPS433
+
+        try:
+            gate_before_coding(change_dir, state)
+        except RuntimeError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+
     next_stage["status"] = "running"
     next_stage["started_at"] = datetime.now().isoformat()
     state["current_stage"] = next_idx
@@ -681,35 +711,26 @@ def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
             _LIB = _SCRIPT_DIR / "lib"
             if str(_LIB) not in sys.path:
                 sys.path.insert(0, str(_LIB))
+            from pipeline_gates import local_verification_lines, wecom_flow_lines  # noqa: WPS433
             from pipeline_regress import plan_approve_prompt_lines  # noqa: WPS433
 
+            print("  说明: Pipeline stage `plan-approve` = 企微 `collaboration.phase=tech_design_review`")
+            print("        prepare/finalize-design 后即进入评审；push-preview 发群时已是技术方案评审阶段")
+            print()
             for line in plan_approve_prompt_lines(state):
                 print(line)
             print()
-            print(">>> 技术方案企微评审（长轮询 + 意图邮箱，同一回合阻塞 wait）：")
-            print("    1. tech-design-prepare → Agent 写 design_plan.json → finalize-design")
-            print("    2. push-preview --patch design-patch-NNN → wait --timeout 3600")
-            print("    3. plan_approve intent → approve-design --pull-intent-id <id>")
-            print("    4. tech_revise intent → tech-revise → 修订 → finalize-design → push-preview → 再 wait")
+            for line in wecom_flow_lines(name, kind="tech_design"):
+                print(line)
             print()
             print(
-                "    CLI: python3 skills/req-to-dev/sub_skills/collab-tech-design-sync/scripts/"
+                "    CLI prepare: python3 skills/req-to-dev/sub_skills/collab-tech-design-sync/scripts/"
                 "collab_tech_design_sync.py prepare --req-id <id>"
             )
-            print(f">>> 仅 Cursor 内审批（降级）: python3 {sys.argv[0]} approve --name {name}")
+            print(
+                ">>> 禁止直接: python3 run_workflow.py approve（须先 approve-design）"
+            )
             print(f">>> 审批驳回: python3 {sys.argv[0]} reject --name {name} --reason \"<修改意见>\"")
-        elif next_stage["id"] == "deploy-approve":
-            print(">>> 本地验收通过后，询问用户是否部署大禹测试环境：")
-            print("    - 否 → commit-push → release（integration_mode=local 默认跳过 dayu/e2e）")
-            print("    - 是 → 将 impact.integration_mode 设为 dayu 后 advance dayu-deploy")
-            print(">>> 请向用户展示以下内容并请求审批（进入部署）：")
-            print("    - 各仓库 git diff 摘要（backend + frontend）")
-            print("    - handoff/frontend-handoff.md + handoff/contract-verify-report.md  （如有前端）")
-            print("    - impact/impact.md → deploy_modules 列表")
-            print("    - review/backend_review_v1.md + review/frontend_review_v1.md")
-            print()
-            print("⚠️  deploy-approve 必须人工审批，通过后将 commit-push 到远程并部署测试环境")
-            print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
         else:
             print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {name}")
     else:
@@ -739,13 +760,19 @@ def cmd_approve(args):
         print(f"ERROR: 当前阶段 {current['id']} 不是阻塞阶段，无需审批", file=sys.stderr)
         sys.exit(1)
 
-    # 联调 resync 回退后的 plan-approve：通过后清除待审标记
     if current["id"] == "plan-approve":
         _LIB = _SCRIPT_DIR / "lib"
         if str(_LIB) not in sys.path:
             sys.path.insert(0, str(_LIB))
+        from pipeline_gates import gate_plan_approve_direct, wecom_flow_lines  # noqa: WPS433
         from pipeline_regress import clear_collab_regression  # noqa: WPS433
 
+        ok, reason = gate_plan_approve_direct(change_dir, state)
+        if not ok:
+            print(f"ERROR: {reason}", file=sys.stderr)
+            for line in wecom_flow_lines(state.get("req_id", args.name), kind="tech_design"):
+                print(line, file=sys.stderr)
+            sys.exit(1)
         if clear_collab_regression(state):
             _log(change_dir, "COLLAB regression cleared after plan-approve")
             print("✓ 已清除联调回退待审标记（handoff_stale / needs_collab_reapprove）")

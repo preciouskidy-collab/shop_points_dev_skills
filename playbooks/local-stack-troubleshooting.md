@@ -253,6 +253,16 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
 | **处理** | PC `/shop-points` 的 `proxy_pass` **无尾部斜杠**：`http://shop_points_local` |
 | **对比** | H5 `/integral-proxy/` 需要剥前缀 → 保留 `proxy_pass .../` |
 
+### 坑 18：`/shop-points/manage/upload/keCoin/period` 登录后 404
+
+| 项 | 说明 |
+|----|------|
+| **症状** | 城市活动弹窗账期为空；浏览器 Network 中 period API **404**；未登录 curl 可能只见 **302** |
+| **原因** | `spring-boot:run` **先于** `mvn compile` 启动，JVM 未加载 `KeCoinV2UploadController` |
+| **判定** | `KeCoinV2UploadController.class` 修改时间 **晚于** `lsof -i :8081` 对应 Java 进程 `ps -o lstart` |
+| **处理** | `local_stack_up`（`api_change: new` 时会自动 compile+重启）；或 `kill $(lsof -ti :8081)` 后重新 `spring-boot:run` |
+| **预防** | `local_stack_check.py` 对 keCoin 需求会校验二进制是否落后于 `target/classes` |
+
 ---
 
 ## 四、CAS 反代（需 sudo）

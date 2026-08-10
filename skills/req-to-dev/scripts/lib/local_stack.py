@@ -15,6 +15,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from collab_common import CONFIG_DIR, find_change_dir  # noqa: E402
+from local_config import (  # noqa: E402
+    DEFAULT_TEST_SHOP_CODE,
+    load_test_env_fixtures,
+    test_env_fixtures_summary,
+)
 
 NGINX_TEMPLATE = CONFIG_DIR / "nginx" / "local-gateway.conf.template"
 
@@ -28,7 +33,7 @@ DEFAULT_H5_HOST = "integral.ttb.test.ke.com"
 DEFAULT_PC_HOST = "point-pc.ttb.test.ke.com"
 DEFAULT_LOTTERY_HOST_HEADER = "local.ttb.test.ke.com"
 DEFAULT_SHOP_POINTS_HOST_HEADER = "shop-points.shop-points-test01.ttb.test.ke.com"
-DEFAULT_SHOP_CODE = "TJDY0101"
+DEFAULT_SHOP_CODE = DEFAULT_TEST_SHOP_CODE
 DEFAULT_INTEGRAL_PROXY_TARGET = "http://shop-points.shop-points-test01.ttb.test.ke.com"
 DEFAULT_INTEGRAL_PROXY_HOST = "shop-points.shop-points-test01.ttb.test.ke.com"
 
@@ -377,6 +382,128 @@ def http_status(url: str, timeout: float = 5.0) -> int | None:
         return None
 
 
+KECOIN_PERIOD_PATH = "/shop-points/manage/upload/keCoin/period"
+
+
+def impact_requires_kecoin_api(impact: dict, change_dir: Path | None = None) -> bool:
+    """本需求若新增/扩展 shop-points 上传 API，本地栈须能路由到 keCoin period。"""
+    api_change = str(impact.get("api_change", "")).strip().lower()
+    if api_change not in ("new", "extend"):
+        return False
+    modules = impact.get("deploy_modules") or []
+    if isinstance(modules, str):
+        modules = [m.strip() for m in modules.split(",") if m.strip()]
+    if any("shop-points" in str(m) for m in modules):
+        return True
+    if change_dir is not None:
+        contract = change_dir / "handoff" / "api-contract.yaml"
+        if contract.exists() and "keCoin" in contract.read_text(encoding="utf-8"):
+            return True
+    return api_change == "new"
+
+
+def shop_points_kecoin_period_url(cfg: StackConfig) -> str:
+    return f"http://127.0.0.1:{cfg.shop_points_port}{KECOIN_PERIOD_PATH}"
+
+
+def kill_processes_on_port(port: int, label: str = "port") -> list[int]:
+    result = subprocess.run(
+        ["lsof", "-ti", f":{port}"],
+        capture_output=True,
+        text=True,
+    )
+    pids = [int(p) for p in result.stdout.strip().split() if p.strip().isdigit()]
+    for pid in pids:
+        stop_process(pid, f"{label}:{port}")
+    if pids:
+        time.sleep(2)
+    return pids
+
+
+def compile_shop_points(cfg: StackConfig, log_dir: Path) -> dict:
+    log_file = log_dir / "shop-points-compile.log"
+    cmd = [
+        "mvn",
+        "install",
+        "-pl",
+        "shop-points-start",
+        "-am",
+        "-DskipTests",
+        "-Dmaven.test.skip=true",
+    ]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(cfg.shop_points_repo),
+        stdout=log_file.open("w", encoding="utf-8"),
+        stderr=subprocess.STDOUT,
+        text=False,
+    )
+    if proc.returncode != 0:
+        tail = log_file.read_text(encoding="utf-8", errors="replace")[-2000:]
+        raise RuntimeError(f"shop-points compile 失败 exit={proc.returncode}\n{tail}")
+    return {"status": "compiled", "cmd": " ".join(cmd), "log": str(log_file)}
+
+
+def _java_pid_on_port(port: int) -> int | None:
+    result = subprocess.run(
+        ["lsof", "-ti", f":{port}"],
+        capture_output=True,
+        text=True,
+    )
+    pids = [int(p) for p in result.stdout.strip().split() if p.strip().isdigit()]
+    for pid in pids:
+        ps = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+        )
+        if "java" in (ps.stdout or "").lower():
+            return pid
+    return pids[0] if pids else None
+
+
+def _process_start_epoch(pid: int) -> float | None:
+    result = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "lstart="],
+        capture_output=True,
+        text=True,
+    )
+    line = result.stdout.strip()
+    if not line:
+        return None
+    try:
+        dt = datetime.strptime(line, "%a %b %d %H:%M:%S %Y")
+        return dt.timestamp()
+    except ValueError:
+        return None
+
+
+def kecoin_controller_class_path(cfg: StackConfig) -> Path:
+    return (
+        cfg.shop_points_repo
+        / "shop-points-start/target/classes/com/ke/shop/points/controller/manage/upload/KeCoinV2UploadController.class"
+    )
+
+
+def shop_points_binary_stale(cfg: StackConfig) -> bool:
+    """target/classes 晚于 JVM 启动时间 → spring-boot:run 未加载新 Controller。"""
+    controller = kecoin_controller_class_path(cfg)
+    if not controller.exists():
+        return True
+    pid = _java_pid_on_port(cfg.shop_points_port)
+    if not pid:
+        return False
+    started = _process_start_epoch(pid)
+    if started is None:
+        return False
+    return controller.stat().st_mtime > started + 1.0
+
+
+def shop_points_kecoin_period_status(cfg: StackConfig) -> int | None:
+    """直连本地 JVM；302/401 表示路由已注册，404 表示旧进程未加载新 Controller。"""
+    return http_status(shop_points_kecoin_period_url(cfg))
+
+
 def http_post_status(
     url: str,
     body: bytes = b"{}",
@@ -498,6 +625,9 @@ def collect_stack_health(cfg: StackConfig) -> dict:
         health["shop_points_health"] = http_status(
             f"http://127.0.0.1:{cfg.shop_points_port}/actuator/health"
         )
+        impact = parse_impact_frontmatter(cfg.change_dir)
+        if impact_requires_kecoin_api(impact, cfg.change_dir):
+            health["kecoin_period_api"] = shop_points_kecoin_period_status(cfg)
     if not cfg.skip_lottery:
         health["lottery_health"] = http_status(
             f"http://127.0.0.1:{cfg.lottery_port}/actuator/health"
@@ -556,6 +686,21 @@ def validate_stack_health(cfg: StackConfig, health: dict) -> list[str]:
         errors.append(
             f"shop-points :{cfg.shop_points_port} health 非 200"
         )
+    kecoin_status = health.get("kecoin_period_api")
+    if kecoin_status == 404:
+        errors.append(
+            f"keCoin period API 404 → 本地 shop-points 进程过旧（compile 后未重启）。"
+            f"执行: kill $(lsof -ti :{cfg.shop_points_port}) 后重新 local_stack_up，"
+            "或 mvn compile -pl shop-points-start -am && spring-boot:run"
+        )
+    impact = parse_impact_frontmatter(cfg.change_dir)
+    if cfg.local_shop_points and impact_requires_kecoin_api(impact, cfg.change_dir):
+        if shop_points_binary_stale(cfg):
+            errors.append(
+                f"shop-points :{cfg.shop_points_port} 二进制落后于 target/classes "
+                f"（{KECOIN_PERIOD_PATH} 登录后 404）。"
+                "请重新 local_stack_up（会自动 compile+重启）或手动重启 shop-points"
+            )
     if not cfg.skip_lottery and health.get("lottery_health") != 200:
         errors.append(f"lottery :{cfg.lottery_port} health 非 200")
 
@@ -722,12 +867,24 @@ def start_lottery(cfg: StackConfig, log_dir: Path) -> dict:
 def start_shop_points(cfg: StackConfig, log_dir: Path) -> dict:
     if not cfg.local_shop_points:
         return {"status": "skipped", "reason": "remote_shop_points"}
+    impact = parse_impact_frontmatter(cfg.change_dir)
+    need_kecoin = impact_requires_kecoin_api(impact, cfg.change_dir)
     if is_port_open(cfg.shop_points_port):
-        return {
-            "status": "already_running",
-            "port": cfg.shop_points_port,
-            "url": f"http://127.0.0.1:{cfg.shop_points_port}",
-        }
+        if need_kecoin and shop_points_binary_stale(cfg):
+            print(
+                f"⚠ shop-points :{cfg.shop_points_port} 进程早于 keCoin Controller 编译时间，"
+                "将 compile 并重启"
+            )
+            kill_processes_on_port(cfg.shop_points_port, "shop-points")
+            compile_shop_points(cfg, log_dir)
+        else:
+            return {
+                "status": "already_running",
+                "port": cfg.shop_points_port,
+                "url": f"http://127.0.0.1:{cfg.shop_points_port}",
+            }
+    elif need_kecoin:
+        compile_shop_points(cfg, log_dir)
     log_file = log_dir / "shop-points.log"
     env = os.environ.copy()
     env["PORT"] = str(cfg.shop_points_port)
@@ -934,6 +1091,19 @@ def write_stack_report(cfg: StackConfig, state: dict) -> Path:
         lines.append(f"- H5: `{urls['h5_entry']}`")
     if urls.get("pc_entry"):
         lines.append(f"- PC: `{urls['pc_entry']}`")
+    fixtures = load_test_env_fixtures()
+    lines.extend(
+        [
+            "",
+            "## 测试可用数据（默认）",
+            "",
+            f"- {test_env_fixtures_summary()}",
+            f"- H5 URL 参数：`shopCode={fixtures['shop_code']}&shopCodeInnerTest={fixtures['shop_code_inner_test']}`",
+            f"- PC 筛选：规则城市选 **{fixtures['city_name']}**；上传 Excel 门店列用 `{fixtures['shop_code']}`",
+            "- 详见 `knowledge/test-env-topology.md` §测试可用数据",
+            "",
+        ]
+    )
     lines.append(
         f"- lottery 直连: `http://{cfg.lottery_host_header}:{cfg.lottery_port}`"
     )

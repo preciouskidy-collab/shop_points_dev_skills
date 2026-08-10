@@ -119,6 +119,19 @@ python3 .../collab_prd_sync.py wait --req-id <req_id> --timeout 3600
 
 > **硬约束**：单轮对话结束后无法靠企微意图唤起 Cursor；禁止 push-preview 后不 wait 就结束回合。
 
+### wait 禁止 action 过滤（R2.2 · 必读）
+
+PRD / 技术方案评审的阻塞 wait **不得**加 `--action`（例如 `--action approve`）。
+
+- **正确**：`collab_prd_sync.py wait --req-id <id> --timeout 3600`（接收全部 intent）
+- **错误**：`collab_wait.py wait --action approve` → `/整理评审` 产生的 `meeting_revise` 被丢弃，表现为「卡住」
+
+**允许多次** `/整理评审`：每次 `meeting_revise` → 修订循环 → `push-preview` → **再 wait**（仍无 action 过滤）。
+
+仅 E2E 人工上传使用 `collab_e2e_upload.py wait`（过滤 `upload_confirm`），与评审 wait 分离。
+
+详见 `guardrails/pipeline-redlines.md` R2.2、`playbooks/wecom-collab-review.md`。
+
 ## 链路 1：会议纪要 → PRD（6 步）
 
 用户给出 **PRD URL + 会议纪要 URL**：
@@ -144,7 +157,7 @@ python3 .../collab_prd_sync.py wait --req-id <req_id> --timeout 3600
 
 **Agent 禁止**：bootstrap 后跳过绑群直接 `meeting` / `push-preview`（脚本会拒绝）。
 
-`meeting-revise`：`/整理评审` 后 wait 收到 `meeting_revise` intent 时执行。
+`meeting-revise`：企微发 **`/整理评审`** 后 wait 返回 `meeting_revise` 时执行（**仅 PRD 阶段**）。
 
 旧 pre-pipeline 入口：`meeting-legacy`（废弃，勿用于新需求）。
 

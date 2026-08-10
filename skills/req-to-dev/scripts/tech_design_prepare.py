@@ -40,7 +40,7 @@ def _read_excerpt(path: Path, limit: int = 6000) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="技术方案评审 prepare（plan-approve 阶段）")
+    parser = argparse.ArgumentParser(description="技术方案评审 prepare（plan-approve = tech_design_review）")
     parser.add_argument("--req-id", required=True)
     args = parser.parse_args()
 

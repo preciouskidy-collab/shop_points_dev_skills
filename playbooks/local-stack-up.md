@@ -43,6 +43,7 @@ commands: []
 3. **后端**：lottery + shop-points 可 `mvn spring-boot:run -Dspring-boot.run.profiles=test`（首次需 `mvn install`，见排障 §坑7）
 4. **前端依赖**：各 client 目录已 `npm ci`（脚本会在缺 craco 时自动 ci）
 5. **凭证**：`secrets.local.json` → `test_env_app`
+6. **测试数据**：默认城市 **天津市**（120000）、门店 **TJDY0101**（见 `knowledge/test-env-topology.md`）
 
 ## 一键启动（推荐）
 

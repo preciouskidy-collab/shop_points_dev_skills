@@ -39,10 +39,13 @@ commands: []
 ---
 frontend_scope: full | partial | none
 api_change: none | extend | new
-integration_mode: local | dayu
-e2e_browser: cursor | agent-browser
+integration_mode: local          # 默认 local；仅用户明确要求时用 dayu
+e2e_browser: cursor              # 默认 cursor；dayu 路径可用 agent-browser
 local_backend_url: http://local.ttb.test.ke.com
 local_frontend_url: http://localhost:3000
+test_city_name: 天津市
+test_city_code: 120000
+test_shop_code: TJDY0101
 mall_scope: full | partial | none
 surfaces: [h5, pc]
 deploy_modules:

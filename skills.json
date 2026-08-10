@@ -56,6 +56,7 @@
           "handoff/api-contract.yaml"
         ],
         "resources": [
+          "guardrail-pipeline-redlines",
           "playbook-api-contract",
           "knowledge-rpc-contracts-${project}",
           "knowledge-service-topology"
@@ -70,6 +71,7 @@
           "tech-design/tech-design.md"
         ],
         "resources": [
+          "guardrail-pipeline-redlines",
           "knowledge-project-atlas",
           "knowledge-component-graph-${project}",
           "knowledge-data-layer-${project}",
@@ -91,6 +93,7 @@
           "tech-design/frontend-design.md"
         ],
         "resources": [
+          "guardrail-pipeline-redlines",
           "playbook-frontend-design",
           "knowledge-frontend-atlas"
         ],
@@ -98,10 +101,14 @@
       },
       {
         "id": "plan-approve",
-        "name": "人工审批",
+        "name": "技术方案评审（企微）",
         "blocking": true,
         "artifacts": [],
-        "resources": [],
+        "resources": [
+          "guardrail-pipeline-redlines",
+          "playbook-wecom-collab-review",
+          "knowledge-collab-intent-routing"
+        ],
         "max_retries": 0
       },
       {
@@ -110,6 +117,7 @@
         "blocking": false,
         "artifacts": [],
         "resources": [
+          "guardrail-pipeline-redlines",
           "guardrail-layering-contracts",
           "guardrail-ai-coding-spec",
           "playbook-spring-boot-coding"
@@ -221,17 +229,11 @@
         ],
         "resources": [
           "playbook-local-e2e-browser-test",
-          "playbook-local-stack-troubleshooting"
+          "playbook-local-stack-troubleshooting",
+          "playbook-apollo-mock-time",
+          "playbook-e2e-upload-collab"
         ],
         "max_retries": 3
-      },
-      {
-        "id": "deploy-approve",
-        "name": "部署前审批",
-        "blocking": true,
-        "artifacts": [],
-        "resources": [],
-        "max_retries": 0
       },
       {
         "id": "commit-push",
@@ -271,6 +273,7 @@
           "tests/e2e_test_report.md"
         ],
         "resources": [
+          "playbook-apollo-mock-time",
           "playbook-e2e-browser-test",
           "knowledge-test-env-topology"
         ],
@@ -381,6 +384,20 @@
         "prd resync"
       ],
       "entry": "skills/req-to-dev/sub_skills/collab-prd-sync/SKILL.md"
+    },
+    {
+      "id": "guardrail-pipeline-redlines",
+      "name": "Pipeline 流程红线",
+      "description": "req-to-dev Pipeline 企微阻塞 wait、先方案后编码、本地验收默认；设计阶段与 plan-approve 前必须加载",
+      "version": "1.0.0",
+      "category": "guardrails",
+      "tags": [
+        "pipeline",
+        "harness",
+        "wecom",
+        "redline"
+      ],
+      "entry": "guardrails/pipeline-redlines.md"
     },
     {
       "id": "guardrail-layering-contracts",
@@ -731,7 +748,7 @@
     {
       "id": "playbook-commit-push",
       "name": "多仓提交推送",
-      "description": "deploy-approve 通过后多仓库 commit 并 push feature 分支",
+      "description": "local-e2e-test 通过后多仓库 commit 并 push feature 分支（无 deploy-approve）",
       "version": "0.1.0",
       "category": "playbooks",
       "tags": [
@@ -808,6 +825,95 @@
       "entry": "playbooks/local-e2e-browser-test.md"
     },
     {
+      "id": "playbook-apollo-mock-time",
+      "name": "Apollo Mock 时间调整",
+      "description": "测试环境 shop-points mockCurrentTime 修改与发布 SOP；贝壳币明细账期可见性、申诉期、业务开关发布",
+      "version": "1.0.0",
+      "category": "playbooks",
+      "tags": [
+        "apollo",
+        "mock-time",
+        "test-env",
+        "e2e",
+        "keCoin",
+        "shop-points"
+      ],
+      "trigger_phrases": [
+        "apollo mock",
+        "mock时间",
+        "mock 时间",
+        "mockCurrentTime",
+        "改apollo时间",
+        "调整apollo配置",
+        "贝壳币明细没有",
+        "奖励记录没有",
+        "monthPeriodList",
+        "申诉期",
+        "apollo 配置时间",
+        "apollo mock时间"
+      ],
+      "entry": "playbooks/apollo-mock-time.md"
+    },
+    {
+      "id": "playbook-e2e-upload-collab",
+      "name": "E2E 人工上传协作",
+      "description": "需用户选手动上传时：企微 notify + 阻塞 wait upload_confirm；禁止结束回合；无对话降级",
+      "version": "1.0.0",
+      "category": "playbooks",
+      "tags": [
+        "e2e",
+        "wecom",
+        "upload",
+        "collab",
+        "wait"
+      ],
+      "trigger_phrases": [
+        "需要上传",
+        "人工上传",
+        "文件已选好",
+        "已上传",
+        "upload_confirm",
+        "企微通知上传",
+        "等我上传"
+      ],
+      "entry": "playbooks/e2e-upload-collab.md"
+    },
+    {
+      "id": "playbook-wecom-collab-review",
+      "name": "企微协作评审",
+      "description": "PRD/技术方案企微评审：修订口令分轨、确认语、push-preview 后阻塞 wait（禁止结束回合）",
+      "version": "1.0.0",
+      "category": "playbooks",
+      "tags": [
+        "wecom",
+        "collab",
+        "plan-approve",
+        "prd-review",
+        "wait"
+      ],
+      "trigger_phrases": [
+        "整理方案",
+        "整理技术方案",
+        "技术方案修订",
+        "企微评审",
+        "plan-approve"
+      ],
+      "entry": "playbooks/wecom-collab-review.md"
+    },
+    {
+      "id": "knowledge-collab-intent-routing",
+      "name": "企微 Intent 路由",
+      "description": "Agent API 按 phase 解析 /整理评审 vs /整理方案 与确认语的路由约定",
+      "version": "1.0.0",
+      "category": "knowledge",
+      "tags": [
+        "wecom",
+        "collab",
+        "agent-api"
+      ],
+      "entry": "knowledge/collab-intent-routing.md"
+    },
+    {
       "id": "knowledge-frontend-atlas",
       "name": "前端项目全景",
       "description": "store-integral PC 与 store-integral-h5 技术栈、目录与路由",
@@ -834,8 +940,8 @@
     {
       "id": "knowledge-test-env-topology",
       "name": "测试环境拓扑",
-      "description": "测试环境 URL、登录方式与联调拓扑",
-      "version": "0.1.0",
+      "description": "测试环境 URL、登录方式、默认测试数据（天津/TJDY0101）与联调拓扑",
+      "version": "0.3.0",
       "category": "knowledge",
       "tags": [
         "test-env",

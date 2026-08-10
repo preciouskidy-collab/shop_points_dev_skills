@@ -127,6 +127,9 @@ def main() -> int:
     tdr = collab.setdefault("tech_design_review", {})
     tdr["ended_at"] = approved_at
     tdr.setdefault("patches", {})[patch_id] = {"status": "design_applied", "approved_at": approved_at}
+    state["plan_design_unlocked"] = True
+    state["plan_design_unlocked_at"] = approved_at
+    state["plan_design_patch"] = patch_id
     save_state(change_dir, state)
     append_log(change_dir, f"TECH-DESIGN approve {patch_id} targets={applied}")
 

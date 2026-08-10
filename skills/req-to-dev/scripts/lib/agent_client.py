@@ -119,10 +119,18 @@ class AgentClient:
     def notify(self, body: dict[str, Any]) -> dict:
         return self._post("/api/v1/collab/notify", body)
 
-    def wait_intents(self, req_id: str, timeout_sec: int = 55) -> dict:
+    def wait_intents(
+        self,
+        req_id: str,
+        timeout_sec: int = 55,
+        action: str | None = None,
+    ) -> dict:
+        params: dict[str, Any] = {"req_id": req_id, "timeout_sec": timeout_sec}
+        if action:
+            params["action"] = action
         return self._get(
             "/api/v1/collab/intents/wait",
-            {"req_id": req_id, "timeout_sec": timeout_sec},
+            params,
             timeout_sec=timeout_sec + 10,
         )
 

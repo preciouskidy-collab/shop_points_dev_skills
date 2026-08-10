@@ -116,6 +116,16 @@ python3 skills/req-to-dev/scripts/local_stack_check.py --req-id <id> --surfaces 
 http://integral.ttb.test.ke.com/store-pointsV2/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101
 ```
 
+### 贝壳币（H5）
+
+| 页面 | 路径 |
+|------|------|
+| 首页入口 | `store-pointsV2/index` → 尊享权益区 **贝壳币 icon** |
+| 贝壳币主页 | `/store-points/beikebi/index?shopCode=<门店>` |
+| 发放明细 | `/store-points/beikebi/history?shopCode=<门店>` |
+
+组件：`views/BeiKeBi/Index`（活动卡片）、`views/BeiKeBi/History`（账期明细）。
+
 ---
 
 ## 前端编码约定

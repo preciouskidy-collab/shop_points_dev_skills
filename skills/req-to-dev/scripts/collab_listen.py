@@ -90,8 +90,15 @@ def listen_loop(
         elif action == "meeting_revise":
             _log_line(
                 log_file,
-                "meeting_revise 已落盘；主会话请用 collab_watch（headless listen 不自动修订）",
+                "meeting_revise 已落盘；主会话请阻塞 wait 后 meeting-revise（口令 /整理评审）",
             )
+        elif action == "tech_revise":
+            _log_line(
+                log_file,
+                "tech_revise 已落盘；主会话请阻塞 wait 后 tech-revise（口令 /整理方案）",
+            )
+        elif action == "plan_approve":
+            _log_line(log_file, "plan_approve 已落盘；主会话请 approve-design")
 
 
 def main() -> int:

@@ -21,7 +21,7 @@ commands: []
 
 1. **确认目标环境**：dev / test / preview / prod。
 2. **构建验证**：`mvn clean package -DskipTests` 构建成功。
-3. **Apollo 配置检查**：新增的配置 key 是否已在目标环境的 Apollo 中同步。
+3. **Apollo 配置检查**：新增的配置 key 是否已在目标环境的 Apollo 中同步。测试环境改 `mockCurrentTime` 见 `playbooks/apollo-mock-time.md`。
 4. **Dubbo 接口兼容性**：
    - 新增参数是否有默认值？
    - 是否需要通知消费者升级？

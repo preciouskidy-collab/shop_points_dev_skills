@@ -33,6 +33,8 @@ commands: []
 
 详见 `knowledge/test-env-topology.md`。
 
+**默认测试数据**：城市 **天津市**（`cityCode=120000`）、门店 **TJDY0101**（PC 筛选城市、上传 Excel 门店列）。
+
 ## AgentBrowser 初始化
 
 ```bash

@@ -1,6 +1,6 @@
 ---
 name: req-to-dev
-description: "从飞书 PRD 到全栈开发、大禹部署、AgentBrowser E2E 自测的端到端 Pipeline。两个人工审批点：plan-approve、deploy-approve"
+description: "从飞书 PRD 到全栈开发、本地联调栈验收（Cursor 浏览器 E2E）的端到端 Pipeline。唯一人工审批点：技术方案企微评审（plan-approve / tech_design_review）"
 version: "0.6.0"
 category: req-to-dev
 tags:
@@ -17,7 +17,9 @@ commands: []
 
 # req-to-dev — 全栈自动化 Pipeline
 
-从飞书 PRD 到可交付代码 + 测试环境部署 + 页面 E2E 验证。**Agent 连续执行，仅在两个人工审批点暂停。**
+从飞书 PRD 到可交付代码 + **本地 nginx 联调栈** + **Cursor 内置浏览器 E2E**。**Agent 连续执行，仅在两个人工审批点暂停。**
+
+> **流程红线（必读）**：`guardrails/pipeline-redlines.md` — 企微阻塞 wait、先方案后编码、本地验收默认。
 
 ## 触发时机
 
@@ -41,18 +43,20 @@ commands: []
 ```
 fetch-prd → break-down → scope-eval
     → api-contract（协议草案，api_change≠none）
-    → tech-design ║ frontend-design（逻辑并行，均引用契约）
-    → [plan-approve] 🔒 审协议 + 后端方案 + 前端方案，冻结契约
+    → tech-design ║ frontend-design（仅 changes/ 内文档，禁止写目标仓库代码）
+    → [企微技术方案评审 + approve-design] 🔒 plan-approve（phase=tech_design_review）
     → backend-coding → frontend-coding → frontend-handoff（契约对齐）
     → backend-review → frontend-review → backend-test-local
-    → [deploy-approve] 🔒 → commit-push → dayu-deploy → e2e-browser-test → release
+    → local-stack-up → local-e2e-test（Cursor 浏览器，默认）
+    → commit-push → release
+    → （可选）dayu-deploy → e2e-browser-test 仅当 integration_mode=dayu 且用户明确要求
 ```
 
-**设计链（v0.6）**：先协议 → 详设并行 → 审批冻结 → 编码 → verify。
+**设计链（v0.6）**：先协议 → 详设 → **企微评审** → 审批解锁 → **才编码** → 本地验收。
 
-- **两个人工审批点**：`plan-approve`（进入编码）、`deploy-approve`（进入 push + 部署，**必须人工**）
-- **条件跳过**：`impact.md` 中 `frontend_scope: none` 时跳过前端交接/编码/审查/E2E
-- **浏览器工具**：本地 `agent-browser` CLI（非 Cursor Browser MCP）
+- **唯一人工审批点**：`plan-approve`（企微 **技术方案评审**，`collaboration.phase=tech_design_review`；`approve-design` 解锁编码）
+- **条件跳过**：`frontend_scope: none` 时跳过前端交接/编码/审查/E2E
+- **浏览器工具**：默认 **Cursor 内置浏览器 MCP**（`local-e2e-test`）；agent-browser/大禹为可选路径
 
 ## 执行流程
 
@@ -165,26 +169,11 @@ Playbook: `spring-boot-coding`。产出后端代码 diff，`mvn compile` 通过�
 | `frontend-review` | frontend-review-checklist | `review/frontend_review_v1.md`（可跳过） |
 | `backend-test-local` | test-authoring | `tests/backend_test_report.md` |
 
-本地接口测试用 `http://local.ttb.test.ke.com` + curl；最终页面验收在 `e2e-browser-test`。
+本地接口测试用 `http://local.ttb.test.ke.com` + curl；最终页面验收在 `local-e2e-test`（Cursor 浏览器）。
 
-### Step 12：deploy-approve 🔒（必须人工）
+### Step 12：commit-push（自动）
 
-展示各仓 diff 摘要 + FDH + deploy_modules + 审查报告。
-
-```
-📋 部署前审批：
-  1. 各仓库变更摘要
-  2. handoff/frontend-handoff.md + contract-verify-report.md（如有前端）
-  3. impact.md → deploy_modules
-  4. 审查报告
-
-❓ 是否批准 commit-push 并部署测试环境？
-```
-
-- 批准 → `approve` → commit-push
-- **不可自动跳过**
-
-### Step 13：commit-push（自动）
+本地 E2E 通过后 **无部署前人工审批**，`advance` 直接进入本阶段。
 
 Playbook: `commit-push`。多仓 commit + push `feature/<name>`，产出 `deploy/git_push_report.md`。
 

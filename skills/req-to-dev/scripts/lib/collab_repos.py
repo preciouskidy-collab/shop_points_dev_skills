@@ -23,7 +23,9 @@ SCOPE_HINT_TEMPLATE = {
     "target_path": None,
     "frontend_scope": "partial",
     "mall_scope": "none",
-    "surfaces": ["h5"],
+    "surfaces": ["pc"],
+    "integration_mode": "local",
+    "e2e_browser": "cursor",
     "deploy_modules": ["shop-points"],
     "inference_note": "待 Cursor 对照 PRD + knowledge/project-atlas.md 填写",
 }

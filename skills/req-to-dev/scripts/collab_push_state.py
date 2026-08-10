@@ -18,10 +18,19 @@ from collab_common import find_change_dir, load_state  # noqa: E402
 def build_push_body(state: dict) -> dict:
     collab = state.get("collaboration", {})
     pr = collab.get("prd_review", {})
+    tdr = collab.get("tech_design_review", {})
+    phase = collab.get("phase", "prd_review")
+    from collab_wecom import revise_command_for_phase, revise_intent_for_phase  # noqa: WPS433
+
     return {
-        "phase": collab.get("phase", "prd_review"),
+        "phase": phase,
+        "activePreviewType": "tech_design" if phase == "tech_design_review" else "prd",
+        "reviseCommand": revise_command_for_phase(phase),
+        "expectedReviseIntent": revise_intent_for_phase(phase),
         "revisionCursor": pr.get("revision_cursor"),
+        "techDesignRevisionCursor": tdr.get("revision_cursor"),
         "prdReviewEndedAt": pr.get("ended_at"),
+        "techDesignReviewEndedAt": tdr.get("ended_at"),
         "collabStartedAt": (collab.get("collab") or {}).get("started_at"),
         "stateJson": json.dumps(collab, ensure_ascii=False),
     }
