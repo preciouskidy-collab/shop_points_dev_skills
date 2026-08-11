@@ -283,7 +283,7 @@ Playbook：`playbooks/local-e2e-browser-test.md` §浏览器工具、§反模式
 
 1. **Cursor 内置浏览器**打开 Apollo Portal（见 `playbooks/apollo-mock-time.md`）
 2. 编辑**独立 key** `mockCurrentTime`（非 `disbursement` JSON 内字段）→ 保存 → **业务开关**发布
-3. 等待 TEST 实例**自动**同步（1–3 分钟）后再继续 PC 提交 / H5 验收 — **发布后无需重启 shop-points**
+3. **业务开关发布成功后立即验证**（配置**实时**热更新，**禁止** `sleep` / 等 1–3 分钟 / 重启 shop-points）— 见 `playbooks/apollo-mock-time.md` §发布后实时生效
 
 **禁止**（均无效或会导致栈损坏，**不得**作为「自愈」手段）：
 
@@ -293,7 +293,7 @@ Playbook：`playbooks/local-e2e-browser-test.md` §浏览器工具、§反模式
 - 未在 Portal 确认「已发布」+ 未等业务验证就标 `APOLLO-MOCK-01` PASS
 - 申诉期负向与申诉期内上传共用同一次 mock（须分阶段发布，见 `playbooks/apollo-mock-time.md` §两阶段改 mock）
 
-本地 `:8081` shop-points 仍拉 TEST Apollo；**改时间 = 改 Portal 配置 + 等同步**，不是改本地进程启动参数，也**不是**重启进程。
+本地 `:8081` shop-points 仍拉 TEST Apollo；**改时间 = Portal 配置 + 业务开关发布 + 立即验证**，不是改本地进程启动参数，也**不是**重启或 sleep 等待。
 
 Playbook：`playbooks/apollo-mock-time.md`（含 Agent 浏览器操作提示）。
 

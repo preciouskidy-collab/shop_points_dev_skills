@@ -74,6 +74,6 @@ python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py 
 | R6 编码后连续推进 | `run_workflow continue` 自动 review → stack → E2E；**禁止**中途断开让用户手动测 |
 | R6.1 E2E 完整清单 | 贝壳币上传须 `e2e_checklist.json` 全 PASS（含 **E2E-PC-02 申诉期负向**、H5 **同 upload_period**）；见 `playbooks/kecoin-upload-e2e-matrix.md` |
 | **R8.1 浏览器** | `local-e2e-test` **仅** Cursor 内置浏览器 MCP；**禁止** Playwright / agent-browser / 本机 Chrome |
-| **R8.2 Apollo mock** | `mockCurrentTime` **仅** Apollo Portal + 业务开关发布；**禁止** JVM 启动参数 / 本地 yml |
+| **R8.2 Apollo mock** | `mockCurrentTime` **仅** Apollo Portal + 业务开关发布；**实时生效**，禁止 sleep/重启/JVM 参数 |
 
 **禁止**直接 `run_workflow.py approve` 跳过 `approve-design`（脚本已门禁）。

@@ -28,17 +28,18 @@ commands: []
 | 杀 shop-points / `local_stack_up` 重启「换时间」 | **错误**：Apollo 发布后实例会**自动拉取/热加载**配置，**无需**也不应重启 `:8081` |
 | 未在 Portal 确认「已发布」就继续 E2E | CDP 点按钮易漏「业务开关」或二次「发布」；须读表核对 Value |
 
-本地联调栈 `:8081` 仍消费 TEST Apollo；**改时间 = Portal 改独立 key `mockCurrentTime` + 业务开关发布 + 等 1–3 分钟同步**，**禁止**重启服务。
+本地联调栈 `:8081` 仍消费 TEST Apollo；**改时间 = Portal 改独立 key `mockCurrentTime` + 业务开关发布 → 立即验证**，**禁止**重启服务，**禁止** `sleep 90` / 等 1–3 分钟。
 
-### 发布后无需重启（必读）
+### 发布后实时生效（必读）
 
-shop-points 接入 Apollo 客户端后，**配置发布成功 → 实例自动感知新 `mockCurrentTime`**（通常 1–3 分钟内）。Agent **禁止**在改 mock 后执行：
+shop-points 接入 Apollo 客户端后，**业务开关发布成功 → 配置热更新，同步为实时**（本地 `:8081` 与 TEST 远程实例一致）。Agent **禁止**：
 
 - `kill` / 重启本地 `:8081` shop-points
 - `local_stack_up` 仅为「让栈吃到新 mock」而重启
+- `sleep 60` / `sleep 90` / 「等 1–3 分钟同步」再验 H5（**错误**：发布后直接 `monthPeriodList` / 刷新 H5 验证）
 - 任何企图用 JVM 启动参数覆盖 Apollo 的做法
 
-**正确等待方式**：Portal「实例列表」观察非最新配置数降为 0，或调 `monthPeriodList` / PC 弹窗账期 / H5 页面验证，而非重启进程。
+**正确验证方式**：Portal 行状态 **已发布** + Value 正确 → **同一回合**调 `monthPeriodList` / PC 弹窗账期 / `browser_navigate` 刷新 H5，**不要**人为 sleep。
 
 ### E2E 贝壳币上传：两阶段改 mock（禁止搞反）
 
@@ -48,7 +49,7 @@ shop-points 接入 Apollo 客户端后，**配置发布成功 → 实例自动�
 | 2 | `E2E-PC-01c` 申诉期**内**成功上传 | `2026-10-03 10:00:00`（当月 1–5 日） | 弹窗账期 `2026M9`，列表终态已生效 |
 | 3 | `APOLLO-MOCK-01` + `E2E-H5-02` 明细 | 再发布为 `2026-10-11 10:00:00`（发币日 10 号之后） | `beikebi/history` 出现 `2026年9月` 汇总 |
 
-每阶段须：**保存 → 提交变更 → 发布属性=业务开关 → 发布 → 等同步 → API/页面验证**，再跑对应用例。不可在未验证 Portal 行状态为「已发布」时标 `APOLLO-MOCK-01` PASS。
+每阶段须：**保存 → 提交变更 → 发布属性=业务开关 → 发布 → 立即 API/页面验证**，再跑对应用例。不可在未验证 Portal 行状态为「已发布」时标 `APOLLO-MOCK-01` PASS。
 
 ## 何时需要改 mock 时间
 
@@ -108,11 +109,11 @@ shop-points 接入 Apollo 客户端后，**配置发布成功 → 实例自动�
 4. Release Name 可沿用自动生成（如 `20260807203748-release`）
 5. 点击 **发布**，等待成功（行状态变为 **已发布**）
 
-### 3. 等待实例同步（勿重启服务）
+### 3. 发布后立即验证（勿重启、勿 sleep）
 
-- TEST 环境 shop-points 约 **6** 个实例；发布后通常 **1–3 分钟** 内**自动**拉取新配置（热更新，**不需要**重启 shop-points）
-- Portal「实例列表」可查看「使用非最新配置」数量，应逐步降为 0
-- 本地 `:8081` 与远程 TEST 实例行为一致：改 mock **只走 Portal 发布**，禁止 `kill 8081` / `local_stack_up` 换时间
+- **业务开关发布成功后配置实时热更新**（本地 `:8081` 与 TEST 实例一致），**不需要**重启 shop-points，**不需要** `sleep` 或等 1–3 分钟
+- Portal 确认行状态 **已发布** + Value 正确后，**同一回合**继续 E2E
+- **禁止**：`sleep 90`、「等实例同步」、为吃 mock 而 `kill 8081` / `local_stack_up`
 
 ### 4. 验证
 
@@ -143,13 +144,14 @@ http://integral.ttb.test.ke.com:8088/store-points/beikebi/history?shopCode=TJDY0
 
 | 问题 | 处理 |
 |------|------|
-| 改了值但接口仍旧时间 | 仅保存未 **发布**；或实例尚未同步 |
+| 改了值但接口仍旧时间 | 仅保存未 **发布**；或发布属性未选 **业务开关** |
 | 提交变更无反应 / 配置没有变化 | 重新打开提交弹窗；确认 Changes 表有 `mockCurrentTime` 行 |
 | 业务变更无法发布 | 改选 **业务开关** |
 | TEST 紧急发布报错 | TEST 不支持 `isEmergencyPublish`；用正常发布 + 业务开关 |
 | 改 `disbursement` JSON 里的 mock 无效 | 改独立 key **`mockCurrentTime`** |
-| 主页有卡片、明细无账期 | mock 拨到发币日之后 + 申诉期之后（见上表）；**不要**重启服务，等 Apollo 同步 |
-| Agent 改 mock 后重启了 shop-points | **无效且错误**；撤销重启，仅等 1–3 分钟并查 `monthPeriodList` |
+| 主页有卡片、明细无账期 | mock 拨到发币日之后 + 申诉期之后（见上表）；**不要**重启服务，发布后直接刷新 H5 验证 |
+| Agent 改 mock 后重启了 shop-points | **无效且错误**；撤销重启，发布后直接查 `monthPeriodList` / 刷新 H5 |
+| Agent 发布 mock 后 `sleep 90` 等同步 | **错误**；配置实时生效，发布后立即验证 |
 | 一次 mock 想同时过 PC 负向 + 申诉期内上传 | 须**分两次发布**（先申诉期外，再申诉期内），见「两阶段改 mock」 |
 
 ## Agent 浏览器操作提示
