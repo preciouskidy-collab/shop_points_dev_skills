@@ -31,7 +31,7 @@ commands: []
 2. 每个接口分配稳定 `id`（供 frontend-design 引用）
 3. 填写路径、方法、请求/响应 JSON 示例、错误码、兼容性说明
 4. 产出 `handoff/api-contract.yaml`，`version: draft`
-5. 若有前端：在 `e2e_cases` 草案中写 1–2 条与接口相关的验收点（细节在 frontend-design 展开）
+5. 若有前端：在 `e2e_cases` 草案中写验收点；**贝壳币/Excel 上传类**须从 `skills/req-to-dev/references/kecoin-upload-e2e-cases.yaml` 生成完整用例（含 `upload_period`、活动/城市、`E2E-PC-02` 负向、H5 账期切换），可执行 `python3 skills/req-to-dev/scripts/local_e2e_checklist.py seed-contract` 导出草案
 
 ## 产出
 

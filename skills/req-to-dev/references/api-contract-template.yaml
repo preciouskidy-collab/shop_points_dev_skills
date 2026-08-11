@@ -18,7 +18,19 @@ apis:
   #   compatibility: 老字段兼容说明
 
 e2e_cases: []
-#  - id: E2E-01
+# 贝壳币上传类：复制 skills/req-to-dev/references/kecoin-upload-e2e-cases.yaml 中 cases，
+# 或运行: python3 skills/req-to-dev/scripts/local_e2e_checklist.py seed-contract
+# 须含: upload_period、活动/城市对齐、E2E-PC-02 申诉期外负向、H5 账期切换步骤
+#  - id: E2E-PC-01a
+#    surface: pc
+#    test_context_ref: upload_period
+#    steps: ["活动 253 天津市", "记录 upload_period"]
+#    expected: "弹窗账期与后续 H5 一致"
+#  - id: E2E-PC-02
+#    surface: pc
+#    steps: ["申诉期外提交"]
+#    expected: "hasSaveError=true"
+#  - id: E2E-H5-01
 #    surface: h5
-#    steps: []
-#    expected: ""
+#    steps: ["切换至 upload_period 账期", "验卡片"]
+#    expected: "非默认 M10"

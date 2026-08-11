@@ -1,7 +1,7 @@
 ---
 name: pipeline-redlines
 description: "执行 req-to-dev Pipeline 时 Agent 必须遵守的流程红线（先于一切编码动作加载）"
-version: "1.2.0"
+version: "1.3.0"
 category: guardrails
 tags:
   - pipeline
@@ -87,6 +87,20 @@ meeting-revise / tech-revise → 写 plan → finalize → push-preview → 再 
 
 **E2E 人工上传**是唯一允许 action 过滤的场景：`collab_e2e_upload.py wait`（仅等 `upload_confirm`），与 PRD/技术方案评审 **不是同一条 wait 命令**。
 
+## R2.3 · 修订 intent 必须消费（禁止重复拉取）
+
+| intent `action` | 消费时机 | 命令 |
+|-----------------|----------|------|
+| `approve` | `collab_approve.py` | `approve --pull-intent-id <id>` |
+| `plan_approve` | `approve_design.py` | `approve-design --pull-intent-id <id>` |
+| **`meeting_revise`** | **`meeting_revise_prepare.py` 成功后** | **`meeting-revise --pull-intent-id <id>`** |
+| **`tech_revise`** | **`tech_design_revise_prepare.py` 成功后** | **`tech-revise --pull-intent-id <id>`** |
+
+- wait 返回 JSON 后 **同一回合** 执行 `collab_handle_intent.py`（或带 `--pull-intent-id` 的子命令）
+- **禁止**手动 `AgentClient.consume_intent` 绕过 prepare
+- **禁止**为跳过旧 intent 而对 wait 加 `--action approve`（见 R2.2）
+- 未消费时 wait **会反复返回同一 `intent_id`**（流程事故）
+
 ## R2.1 · 企微修订口令（PRD vs 技术方案分轨）
 
 | 阶段 | `collaboration.phase` | 通过（企微） | **需修订（企微）** | intent `action` |
@@ -161,6 +175,117 @@ e2e_browser: cursor
 
 - 不得用「跳过大禹」为由跳过 `local-stack-up` / `local-e2e-test`
 - 不得默认走 AgentBrowser + 大禹点击测试
+
+## R6 · 编码后 Pipeline 连续推进（禁止中途断开）
+
+编码完成（`frontend-handoff` 之后）**同一 Agent 回合内**须连续执行至 `local-e2e-test` 通过，**禁止**在 review / 本地栈 / E2E 之间结束回合让用户手动推进。
+
+```bash
+python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>
+```
+
+| 自动连续阶段 | 说明 |
+|--------------|------|
+| `backend-review` | `mvn compile` + 产出 review 报告 |
+| `frontend-review` | `npm run build` + 产出 review 报告 |
+| `backend-test-local` | `mvn test`（失败降级 compile） |
+| `local-stack-up` | `local_stack_up.py` |
+| `local-e2e-test` | `local_e2e_autorun.py`（VPN 默认连通，stack check 带重试） |
+
+- **禁止**将 E2E 标为 BLOCKED 后结束回合等用户手动测
+- **禁止**仅写 markdown 报告而不跑 `continue` / `local_e2e_autorun.py`
+- Excel 上传等 **必须**人工选文件的场景仍走 `collab_e2e_upload`（R5），但 Agent 须在同一回合 notify → wait
+
+## R6.1 · local-e2e-test 完整闭环清单（禁止偷工减料）
+
+`local_e2e_autorun.py` **仅**覆盖 API/栈探测；**不得**以其 verdict 作为 `local-e2e-test` 完成依据。
+
+**贝壳币上传类需求**（`api-contract` 含 `keCoin` 上传 / Excel）`tests/e2e_checklist.json` 须 **全部 PASS** 方可 `advance`：
+
+| 用例 ID | 内容 |
+|---------|------|
+| `E2E-PC-01a` | PC 登录 + **正确活动/城市** + 弹窗（记录 `upload_period`） |
+| `E2E-PC-01b` | **企微 notify → 用户选 Excel → 阻塞 wait `upload_confirm`** |
+| `E2E-PC-01c` | **申诉期内**点确定 + 列表轮询至 **102 已生效** |
+| `E2E-PC-02` | **申诉期外**提交 → `hasSaveError=true`（负向，不可跳过） |
+| `APOLLO-MOCK-01` | TEST `mockCurrentTime` 调至发币日/申诉期后，**业务开关**发布 |
+| `E2E-H5-01` | `beikebi/index` **切换至上传账期** → 线下活动卡片（禁止用默认 M10） |
+| `E2E-H5-02` | `beikebi/history` **上传账期**明细（与 PC 账期一致） |
+
+**账期/城市对齐（反模式沉淀）** → `playbooks/kecoin-upload-e2e-matrix.md`：
+
+- H5 卡片页与明细页均须在 **upload_period** 下断言，不得用页面默认账期
+- PC 活动规则城市须与 Excel 门店一致（例：天津市 253 + TJDY0101）
+- 禁止仅 happy path：须含 `E2E-PC-02` 申诉期外拦截
+
+```bash
+python3 skills/req-to-dev/scripts/local_e2e_checklist.py --req-id <id> init
+python3 skills/req-to-dev/scripts/local_e2e_checklist.py --req-id <id> gate   # advance 前必过
+```
+
+**禁止**：只打开弹窗、不跑企微上传协作就标 PASS；不调 Apollo mock 就验 H5 明细；跳过 H5 卡片/明细页；**H5 未切上传账期就标 PASS**；**跳过申诉期负向 E2E-PC-02**；**错城活动上传仍标 PASS**。
+
+## R7 · 环境阻塞 Agent 自愈（禁止甩锅给用户）
+
+`local-stack-up` / `local-e2e-test` / `continue` 遇阻塞时，**Agent 须在本回合内自行排障并修复**，不得仅输出「请手动查端口/日志」后结束回合。
+
+| 阻塞类型 | Agent 必须尝试（按序） |
+|----------|------------------------|
+| nginx `bind()` / 端口占用 | 健康检查通过 → **复用现有网关**；未通过 → `kill` 占用进程 → 重试 `local_stack_up` |
+| `local_stack_up` exit 1 | 自动跑 `local_stack_check.py`；复检通过则视为栈就绪 |
+| shop-points 旧进程无 keCoin API | 检测 Controller 编译时间 → compile + 重启（`local_stack` 已内置） |
+| webpack 未起导致 502 | 启动/等待 :3000 / :9393，再复检 |
+| E2E checklist 未 PASS | 读失败项 → 按 **R8** 用 Cursor 浏览器 + Apollo Portal 修 mock/重跑；**禁止** Playwright / JVM mock |
+
+**禁止**：把 `lsof`、杀进程、重跑栈/E2E 写成「请你执行」；除非需 **sudo / VPN / 人工选 Excel 文件** 等 Agent 无法代劳的场景。
+
+排障手册：`playbooks/local-stack-troubleshooting.md` §二检查清单。
+
+## R8 · local-e2e-test 路径红线（Cursor 浏览器 + Apollo Portal）
+
+`local-e2e-test` 阶段有两条**唯一正确路径**，违反即视为流程失败，须回滚错误操作后按 playbook 重做。
+
+### R8.1 · 必须用 Cursor 内置浏览器 MCP（禁止 Playwright / 外部 headless）
+
+| 场景 | 唯一路径 |
+|------|----------|
+| `impact.e2e_browser: cursor` 或 `integration_mode: local` | **`cursor-ide-browser` MCP**：`browser_navigate` → `browser_lock` → `browser_snapshot` → `browser_click` / `browser_fill` |
+| PC/H5 页面交互、CAS 登录、弹窗点确定 | 同上；登录态复用 Glass **Browser Tab** |
+| 截图取证 | `browser_take_screenshot` |
+
+**禁止**：
+
+- 写/跑 `playwright`、Selenium、独立 `chromium.launch(headless=True)` 脚本作为 `local-e2e-test` 主路径
+- 用户已打开 Glass 浏览器仍后台跑 Playwright「因为 CAS 难登」
+- 仅用 `open_resource` 打开 URL 却不走 `browser_navigate` + snapshot 驱动（用户看不到面板）
+
+**Glass 浏览器不可见时 Agent 须先**（同一回合，禁止甩锅）：
+
+1. `browser_tabs` 确认绑定 **glass-browser** 视图（非仅 agent 内部 tab）
+2. Settings → **Browser Automation = Browser Tab**；`Cmd+E` / Open Agents Window
+3. `browser_navigate` 打开目标 URL → 告知用户看右侧 **Browser** 面板
+4. 仍不可见再排障，**不得**降级 Playwright
+
+Playbook：`playbooks/local-e2e-browser-test.md` §浏览器工具、§反模式。
+
+### R8.2 · mockCurrentTime 仅 Apollo Portal 配置（禁止启动参数 / 本地 JVM 篡改）
+
+申诉期正负向（`E2E-PC-01c` / `E2E-PC-02`）、H5 明细账期（`APOLLO-MOCK-01` / `E2E-H5-*`）依赖 TEST 环境 **`shop-points` / `application` / `mockCurrentTime`**，须：
+
+1. **Cursor 内置浏览器**打开 Apollo Portal（见 `playbooks/apollo-mock-time.md`）
+2. 编辑 `mockCurrentTime` → 保存 → **业务开关**发布
+3. 等待 TEST 实例同步（1–3 分钟）后再继续 PC 提交 / H5 验收
+
+**禁止**（均无效或会导致栈损坏，**不得**作为「自愈」手段）：
+
+- `mvn spring-boot:run` 加 `-DmockCurrentTime=...` / `--mockCurrentTime=...`
+- 改 `application.yml` / 环境变量冒充 Apollo mock
+- 杀本地 `:8081` shop-points 企图用 JVM 参数「绕过申诉期」
+- 未发布 Apollo 就标 `APOLLO-MOCK-01` PASS
+
+本地 `:8081` shop-points 仍拉 TEST Apollo；**改时间 = 改 Portal 配置**，不是改本地进程启动参数。
+
+Playbook：`playbooks/apollo-mock-time.md`（含 Agent 浏览器操作提示）。
 
 ## Agent 自检清单（进入 backend-coding 前）
 

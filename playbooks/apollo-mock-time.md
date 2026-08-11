@@ -17,6 +17,18 @@ commands: []
 
 > **按需加载**：`skills_loader.py search "apollo mock"` 或 `search "贝壳币明细"`；Pipeline `local-e2e-test` / `e2e-browser-test` 阶段自动附带本 playbook。
 
+## 红线 R8.2 — 唯一正确改时间方式
+
+**必须**在 **Apollo Portal 网页**（建议用 **Cursor 内置浏览器**打开）修改并 **业务开关** 发布 `mockCurrentTime`。
+
+| 禁止（无效 / 破坏本地栈） | 原因 |
+|---------------------------|------|
+| `mvn spring-boot:run -DmockCurrentTime=...` | 本地进程参数不替代 TEST Apollo；易导致 8081 启动失败 |
+| `--mockCurrentTime=` / `application.yml` 本地覆盖 | E2E 验收的是 TEST 配置下发，不是 JVM 属性 |
+| 杀 shop-points 重启「换时间」 | 申诉期 / H5 账期由 **远程 Apollo** 决定 |
+
+本地联调栈 `:8081` 仍消费 TEST Apollo；**改时间 = Portal 改 key + 发布**，然后等待实例同步。
+
 ## 何时需要改 mock 时间
 
 | 现象 | 可能原因 |
@@ -118,6 +130,7 @@ http://integral.ttb.test.ke.com:8088/store-points/beikebi/history?shopCode=TJDY0
 
 ## Agent 浏览器操作提示
 
+- **打开 Portal 必须用 Cursor 内置浏览器 MCP**（`browser_navigate`），与 `local-e2e-test` 同一 Browser Tab 会话；**禁止**用 Playwright 开 Portal
 - Apollo Portal 为 Angular 页面；发布弹窗内「发布」按钮在请求进行中会 `disabled`，需等待
 - 可用 CDP 读表：`document.querySelectorAll('tr')` 过滤 `mockCurrentTime` 确认 **已发布** 与 Value
 - 发布后可 `fetch('/apps/shop-points/envs/TEST/clusters/default/namespaces/application/releases/active')` 检查 release 内 `\"mockCurrentTime\":\"2026-10-11...\"`

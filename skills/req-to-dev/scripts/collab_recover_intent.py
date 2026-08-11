@@ -72,18 +72,23 @@ def main() -> int:
             return proc.returncode
         print("✅ 已消费 approval_intent 并完成 approve")
     elif action == "meeting_revise":
-        print(
-            "ℹ meeting_revise 已落盘 inbox.json；请在主会话同一回合："
-            "meeting-revise → 写 plan → finalize-plan → push-preview → wait",
-            file=sys.stderr,
+        handle = _SCRIPTS / "collab_handle_intent.py"
+        proc = subprocess.run(
+            [sys.executable, str(handle), "--req-id", args.req_id, "--pull-intent-id", str(intent_id), "--action", "meeting_revise"],
+            cwd=str(project_root()),
         )
+        if proc.returncode != 0:
+            return proc.returncode
+        print("✅ meeting_revise intent 已消费并完成 prepare")
     elif action == "tech_revise":
-        print(
-            "ℹ tech_revise 已落盘；请在主会话同一回合："
-            "collab_tech_design_sync tech-revise → 写 design_plan → finalize-design "
-            "→ push-preview → wait",
-            file=sys.stderr,
+        handle = _SCRIPTS / "collab_handle_intent.py"
+        proc = subprocess.run(
+            [sys.executable, str(handle), "--req-id", args.req_id, "--pull-intent-id", str(intent_id), "--action", "tech_revise"],
+            cwd=str(project_root()),
         )
+        if proc.returncode != 0:
+            return proc.returncode
+        print("✅ tech_revise intent 已消费并完成 prepare")
     elif action == "plan_approve":
         print(
             "ℹ plan_approve 已落盘；请在主会话同一回合：approve-design --pull-intent-id",

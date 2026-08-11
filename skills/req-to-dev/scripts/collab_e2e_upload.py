@@ -70,13 +70,22 @@ def push_upload_notify(
     save_session(change_dir, session)
 
     collab = state.setdefault("collaboration", {})
+    collab["phase"] = "e2e_upload"
     collab["e2e_upload"] = {
         "upload_id": upload_id,
         "status": "pending",
         "label": label,
         "since": since,
+        "nonce": nonce,
     }
     save_state(change_dir, state)
+
+    try:
+        from collab_push_state import push_state_for_change  # noqa: WPS433
+
+        push_state_for_change(change_dir, state)
+    except Exception as e:
+        print(f"WARN: push-state 失败: {e}", file=sys.stderr)
 
     lines = [
         f"### E2E 需人工上传 · `{req_id}`",
@@ -109,13 +118,6 @@ def push_upload_notify(
         }
     )
 
-    try:
-        from collab_push_state import push_state_for_change  # noqa: WPS433
-
-        push_state_for_change(change_dir, state)
-    except Exception as e:
-        print(f"WARN: push-state 失败: {e}", file=sys.stderr)
-
     append_log(change_dir, f"E2E_UPLOAD notify upload_id={upload_id}")
     print(f"✓ 企微已通知人工上传 upload_id={upload_id}")
     print(f"  确认语（推荐）: {confirm}")
@@ -137,8 +139,9 @@ def wait_for_upload_confirm(
     *,
     timeout: int = 3600,
     poll_sec: int = 55,
+    legacy_message_fallback: bool = False,
 ) -> dict:
-    """阻塞等待 upload_confirm（Agent intent 或企微群消息匹配）。"""
+    """阻塞等待 upload_confirm（优先 Agent intent 队列；默认不走群消息兜底）。"""
     change_dir = find_change_dir(req_id)
     session = load_session(change_dir)
     if not session or session.get("status") != "pending":
@@ -167,6 +170,12 @@ def wait_for_upload_confirm(
             intents = resp.get("intents") or []
             for intent in intents:
                 if intent.get("action") == "upload_confirm":
+                    intent_id = intent.get("id")
+                    if intent_id is not None:
+                        try:
+                            intent = client.consume_intent(int(intent_id))
+                        except RuntimeError as ce:
+                            print(f"WARN: consume upload_confirm 失败: {ce}", file=sys.stderr)
                     _complete_session(change_dir, session, intent)
                     persist_intent(change_dir, intent)
                     return intent
@@ -186,25 +195,31 @@ def wait_for_upload_confirm(
         except RuntimeError as e:
             print(f"WARN: intents/wait 失败: {e}", file=sys.stderr)
 
-        try:
-            msg_resp = client.list_messages(req_id, since=since, limit=100)
-            messages = msg_resp.get("messages") or []
-            for msg in messages:
-                mid = str(msg.get("id") or msg.get("messageId") or "")
-                if mid and mid in seen_message_ids:
-                    continue
-                text = message_text(msg)
-                if not text:
-                    continue
-                if mid:
-                    seen_message_ids.add(mid)
-                if matches_upload_confirm(text, session):
-                    intent = synthesize_intent_from_message(req_id, session, msg, text)
-                    _complete_session(change_dir, session, intent)
-                    persist_intent(change_dir, intent)
-                    return intent
-        except RuntimeError as e:
-            print(f"WARN: list_messages 失败: {e}", file=sys.stderr)
+        if legacy_message_fallback:
+            try:
+                msg_resp = client.list_messages(req_id, since=since, limit=100)
+                messages = msg_resp.get("messages") or []
+                for msg in messages:
+                    mid = str(msg.get("id") or msg.get("messageId") or "")
+                    if mid and mid in seen_message_ids:
+                        continue
+                    text = message_text(msg)
+                    if not text:
+                        continue
+                    if mid:
+                        seen_message_ids.add(mid)
+                    if matches_upload_confirm(text, session):
+                        intent = synthesize_intent_from_message(req_id, session, msg, text)
+                        _complete_session(change_dir, session, intent)
+                        persist_intent(change_dir, intent)
+                        print(
+                            "WARN: 使用 legacy 群消息兜底（非 Agent intent 队列）；"
+                            "请部署 shop-points-agent upload_confirm 解析",
+                            file=sys.stderr,
+                        )
+                        return intent
+            except RuntimeError as e:
+                print(f"WARN: list_messages 失败: {e}", file=sys.stderr)
 
     return {"status": "timeout", "req_id": req_id, "upload_id": session.get("upload_id")}
 
@@ -236,6 +251,11 @@ def main() -> int:
     p_wait.add_argument("--req-id", required=True)
     p_wait.add_argument("--timeout", type=int, default=3600)
     p_wait.add_argument("--poll-sec", type=int, default=55)
+    p_wait.add_argument(
+        "--legacy-message-fallback",
+        action="store_true",
+        help="[废弃] 启用群消息短语兜底；默认仅 Agent intent 队列",
+    )
 
     args = parser.parse_args()
 
@@ -254,6 +274,7 @@ def main() -> int:
                 args.req_id,
                 timeout=args.timeout,
                 poll_sec=args.poll_sec,
+                legacy_message_fallback=getattr(args, "legacy_message_fallback", False),
             )
             print(json.dumps(intent, ensure_ascii=False))
             if intent.get("status") == "timeout":

@@ -7,6 +7,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -975,7 +976,41 @@ def start_pc_frontend(cfg: StackConfig, log_dir: Path) -> dict:
     return result
 
 
+def _nginx_listen_ports(cfg: StackConfig) -> list[int]:
+    ports: list[int] = []
+    if not cfg.skip_h5:
+        ports.append(cfg.nginx_port)
+    if not cfg.skip_pc:
+        ports.append(cfg.pc_nginx_port)
+    return ports
+
+
+def _try_reuse_healthy_nginx(cfg: StackConfig) -> dict | None:
+    """端口已被占用时：健康检查通过则复用，避免 bind() 失败阻塞 Pipeline。"""
+    ports = _nginx_listen_ports(cfg)
+    if not ports or not all(is_port_open(p) for p in ports):
+        return None
+    health = collect_stack_health(cfg)
+    errors = validate_stack_health(cfg, health)
+    if errors:
+        return None
+    print(
+        f"✓ nginx 端口 {ports} 已在监听且健康检查通过，复用现有网关（跳过重复 bind）"
+    )
+    return {
+        "status": "reused",
+        "reason": "ports_healthy",
+        "h5_port": cfg.nginx_port if not cfg.skip_h5 else None,
+        "pc_port": cfg.pc_nginx_port if not cfg.skip_pc else None,
+        "health": health,
+    }
+
+
 def start_nginx(cfg: StackConfig, prefix: Path, conf_path: Path) -> dict:
+    reused = _try_reuse_healthy_nginx(cfg)
+    if reused:
+        return reused
+
     nginx_bin = find_nginx_bin()
     if not nginx_bin:
         raise RuntimeError("未找到 nginx，请安装: brew install nginx")
@@ -1002,8 +1037,39 @@ def start_nginx(cfg: StackConfig, prefix: Path, conf_path: Path) -> dict:
         text=True,
     )
     if start.returncode != 0:
-        hint = ""
         err = start.stderr or start.stdout or ""
+        if "bind()" in err or "Address already in use" in err:
+            reused = _try_reuse_healthy_nginx(cfg)
+            if reused:
+                return reused
+            ports = _nginx_listen_ports(cfg)
+            print(
+                f"⚠ nginx bind 失败，尝试释放占用端口 {ports} 后重试…",
+                file=sys.stderr,
+            )
+            for p in ports:
+                kill_processes_on_port(p, f"nginx:{p}")
+            retry = subprocess.run(
+                [nginx_bin, "-p", str(prefix), "-c", str(conf_path)],
+                capture_output=True,
+                text=True,
+            )
+            if retry.returncode == 0:
+                time.sleep(0.5)
+                pid = None
+                if pid_file.exists():
+                    pid = int(pid_file.read_text(encoding="utf-8").strip())
+                return {
+                    "status": "started",
+                    "pid": pid,
+                    "bin": nginx_bin,
+                    "prefix": str(prefix),
+                    "conf": str(conf_path),
+                    "h5_port": cfg.nginx_port,
+                    "pc_port": cfg.pc_nginx_port,
+                    "recovered": "kill_port_and_retry",
+                }
+        hint = ""
         if "bind()" in err and (
             cfg.nginx_port < 1024 or cfg.pc_nginx_port < 1024
         ):

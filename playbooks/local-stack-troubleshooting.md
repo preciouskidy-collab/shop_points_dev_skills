@@ -30,6 +30,8 @@ commands: []
 
 **原则**：`impact.md` 的 `surfaces` 描述**需求改动面**，不等于「本地只起一半栈」。全栈联调验收时一律 `--surfaces h5,pc`，除非明确只需单端。
 
+**R7 自愈（Agent 必读）**：栈/E2E 阻塞时 Agent **自行** `local_stack_check` → 复用健康网关 / 杀端口重试 / 重启服务，**禁止**把 `lsof`、杀进程甩给用户。见 `guardrails/pipeline-redlines.md` R7。
+
 ---
 
 ## 一、推荐拓扑（默认 `--nginx-port 8088` + `--pc-nginx-port 8089`）

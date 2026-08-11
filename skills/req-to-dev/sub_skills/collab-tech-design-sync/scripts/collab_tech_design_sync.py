@@ -41,6 +41,7 @@ def main() -> int:
 
     p_revise = sub.add_parser("tech-revise", help="企微 /整理方案 后修订轮 prepare")
     p_revise.add_argument("--req-id", required=True)
+    p_revise.add_argument("--pull-intent-id", type=int, default=None)
 
     p_approve = sub.add_parser("approve-design", help="应用 design_plan + 解锁 plan-approve")
     p_approve.add_argument("--req-id", required=True)
@@ -66,7 +67,10 @@ def main() -> int:
             ["--req-id", args.req_id, "--timeout", str(args.timeout)],
         )
     if args.command == "tech-revise":
-        return _run("tech_design_revise_prepare.py", ["--req-id", args.req_id])
+        argv = ["--req-id", args.req_id]
+        if args.pull_intent_id is not None:
+            argv.extend(["--pull-intent-id", str(args.pull_intent_id)])
+        return _run("tech_design_revise_prepare.py", argv)
     if args.command == "approve-design":
         argv = ["--req-id", args.req_id]
         if args.patch:

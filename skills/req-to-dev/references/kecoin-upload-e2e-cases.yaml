@@ -1,0 +1,117 @@
+# 线下活动贝壳币上传 — E2E 用例规范（生成阶段 Single Source of Truth）
+# 机器读取: kecoin-upload-e2e-cases.json（与本文件保持同步）
+# api-contract / frontend-handoff 产出时须对齐；local_e2e_checklist init 自动注入 test_context 与断言
+#
+# 引用: playbooks/kecoin-upload-e2e-matrix.md
+
+feature: kecoin_offline_upload
+version: "1.0"
+
+test_context:
+  shop_code: TJDY0101
+  city: 天津市
+  city_code: "120000"
+  activity_id: 253
+  upload_period: 2026M9
+  upload_period_display_h5: "2026年9月"
+  excel_hint: "2.0贝壳币手动上传模板_*.xlsx"
+  pc_entry: "http://point-pc.ttb.test.ke.com:8089/integral2/activity-config/city"
+  h5_card_url: "http://integral.ttb.test.ke.com/beikebi/index?shopCode=TJDY0101"
+  h5_history_url: "http://integral.ttb.test.ke.com/beikebi/history?shopCode=TJDY0101"
+
+anti_patterns:
+  - id: WRONG_PERIOD
+    description: "H5 使用页面默认账期（如 M10）而非 upload_period"
+  - id: WRONG_CITY
+    description: "PC 选错城市活动（如合肥 339）导致门店不属于该城市"
+  - id: SKIP_NEGATIVE
+    description: "仅跑申诉期内 happy path，跳过 E2E-PC-02"
+  - id: MOCK_WITHOUT_APOLLO
+    description: "未调 Apollo mockCurrentTime 就验 H5 明细/卡片"
+
+cases:
+  E2E-PC-01a:
+    surface: pc
+    preconditions:
+      - "已登录 PC 管理端"
+      - "活动筛选 activity_id={{activity_id}}（{{city}}）"
+    steps:
+      - "进入活动配置城市页，筛选活动 {{activity_id}}"
+      - "点击上传贝壳币，记录弹窗中的 upload_period（须为 {{upload_period}}）"
+    expected: "弹窗字段完整；upload_period 与后续 H5 验收账期一致"
+    assertions:
+      - "活动城市为 {{city}}，非其它城市活动"
+      - "upload_period 已记录到 e2e_checklist.test_context"
+
+  E2E-PC-01b:
+    surface: pc
+    preconditions:
+      - "E2E-PC-01a 已完成"
+    steps:
+      - "collab notify 触发企微 Excel 上传"
+      - "用户在 Cursor 浏览器选择 {{excel_hint}}"
+      - "阻塞 wait 至 upload_confirm intent"
+    expected: "收到 upload_confirm；Excel 已选且与活动/门店匹配"
+    assertions:
+      - "未跳过企微协作直接标 PASS"
+
+  E2E-PC-01c:
+    surface: pc
+    preconditions:
+      - "申诉期内（mockCurrentTime 在允许窗口内）"
+      - "E2E-PC-01b 已完成"
+    steps:
+      - "点确定提交上传"
+      - "轮询上传列表至状态 102 已生效"
+    expected: "产生已生效记录；账期为 {{upload_period}}"
+    assertions:
+      - "列表行状态为已生效(102)"
+      - "上传 id 已记入 note"
+
+  E2E-PC-02:
+    surface: pc
+    preconditions:
+      - "Apollo mockCurrentTime 调至申诉期外"
+      - "E2E-PC-01a 已完成（同活动 {{activity_id}}）"
+    steps:
+      - "申诉期外再次尝试提交上传"
+    expected: "hasSaveError=true 或明确拦截；不得产生新的已生效记录"
+    assertions:
+      - "接口/弹窗返回 hasSaveError=true"
+      - "列表无新增 102 行"
+
+  APOLLO-MOCK-01:
+    surface: apollo
+    steps:
+      - "TEST shop-points application mockCurrentTime 调至发币日/申诉期后"
+      - "业务开关发布成功"
+    expected: "H5 可展示上传账期数据"
+    assertions:
+      - "mock 值已记录到 checklist note"
+
+  E2E-H5-01:
+    surface: h5
+    preconditions:
+      - "E2E-PC-01c 已成功"
+      - "APOLLO-MOCK-01 已完成"
+    steps:
+      - "打开 {{h5_card_url}}"
+      - "账期选择器切换至 {{upload_period_display_h5}}（非默认月）"
+      - "查看线下活动卡片与汇总金额"
+    expected: "卡片展示与 {{upload_period}} 上传结果一致"
+    assertions:
+      - "已切换至 {{upload_period_display_h5}}，非页面默认账期"
+      - "线下活动配置金额与 PC 上传一致"
+
+  E2E-H5-02:
+    surface: h5
+    preconditions:
+      - "APOLLO-MOCK-01 已完成"
+    steps:
+      - "打开 {{h5_history_url}}"
+      - "筛选/切换至 {{upload_period_display_h5}}"
+      - "查看线下活动配置明细"
+    expected: "明细账期与 upload_period 一致"
+    assertions:
+      - "明细行账期为 {{upload_period_display_h5}}"
+      - "与 E2E-H5-01 同账期验证"

@@ -16,6 +16,7 @@ req-to-dev Pipeline 状态管理器
   python3 run_workflow.py init    --url <飞书URL> --name <名称> --target <项目路径>
   python3 run_workflow.py status  --name <名称>
   python3 run_workflow.py advance --name <名称>
+  python3 run_workflow.py continue --name <名称>   # review → E2E 连续自动推进
   python3 run_workflow.py approve --name <名称>
   python3 run_workflow.py fail    --name <名称> --reason <原因>
   python3 run_workflow.py log     --name <名称> --message <操作描述>
@@ -24,6 +25,7 @@ req-to-dev Pipeline 状态管理器
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -384,7 +386,21 @@ def _check_artifacts(change_dir: Path, stage: dict) -> tuple[bool, list[str]]:
         for a in stage["artifacts"]
         if not _artifact_skipped(change_dir, a, stage) and not (change_dir / a).exists()
     ]
-    return len(missing) == 0, missing
+    if missing:
+        return False, missing
+
+    # local-e2e-test：产出物存在 ≠ 验收完成，须 e2e_checklist 全 PASS（R6.1）
+    if stage.get("id") == "local-e2e-test":
+        _LIB = _SCRIPT_DIR / "lib"
+        if str(_LIB) not in sys.path:
+            sys.path.insert(0, str(_LIB))
+        from local_e2e_gate import gate_local_e2e  # noqa: WPS433
+
+        ok, gate_errors = gate_local_e2e(change_dir)
+        if not ok:
+            return False, gate_errors
+
+    return True, []
 
 
 def _log(change_dir: Path, message: str):
@@ -572,6 +588,16 @@ def cmd_status(args):
             for line in plan_approve_prompt_lines(state):
                 print(line)
             print(f">>> 审批通过: python3 {sys.argv[0]} approve --name {state['name']}")
+
+
+def cmd_continue(args):
+    """编码后连续自动执行 review → local-e2e-test（见 pipeline_autorun.py）。"""
+    script = _SCRIPT_DIR / "pipeline_autorun.py"
+    proc = subprocess.run(
+        [sys.executable, str(script), "--req-id", args.name],
+        cwd=str(_PROJECT_ROOT),
+    )
+    sys.exit(proc.returncode)
 
 
 def cmd_advance(args):
@@ -959,6 +985,13 @@ def main():
     p_log.add_argument("--message", help="Agent 操作描述")
     p_log.add_argument("--show", action="store_true", help="显示完整日志")
 
+    # continue
+    p_continue = subparsers.add_parser(
+        "continue",
+        help="编码后连续自动推进 review → local-e2e-test（不停回合）",
+    )
+    p_continue.add_argument("--name", required=True, help="需求名称 / req_id")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -969,6 +1002,7 @@ def main():
         "init": cmd_init,
         "status": cmd_status,
         "advance": cmd_advance,
+        "continue": cmd_continue,
         "approve": cmd_approve,
         "reject": cmd_reject,
         "fail": cmd_fail,

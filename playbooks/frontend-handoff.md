@@ -37,6 +37,7 @@ commands: []
 4. 若有 delta：`status: drift`，列出修复建议；无 delta：`status: aligned`
 5. 生成瘦身版 `handoff/frontend-handoff.md`：
    - §2 影响面矩阵、§4 UI 改造点、§6 E2E 用例（API 细节引用契约，不重复抄写）
+   - **贝壳币上传类**：§6 须与 `kecoin-upload-e2e-cases.yaml` 矩阵 ID 一一对应；H5 用例写明「切换至 `upload_period`」；**必须**含 `E2E-PC-02` 申诉期外负向
 6. 若实现与契约不一致且以**代码为准**：更新 `api-contract.yaml` 的 `version: verified` 并标注修订说明
 
 ## 产出
@@ -70,4 +71,5 @@ FDH 模板见 `skills/req-to-dev/references/fdh-template.md`（仅填 UI / E2E �
 - **不得**在未对比代码的情况下重写整套 API 契约
 - delta 必须可追溯到具体文件/字段
 - 每个 P0 功能至少 1 条 E2E 用例写入 FDH §6
+- **贝壳币上传**：§6 不得仅 happy path；须含账期/城市对齐与 `E2E-PC-02`（gate 会校验 §6 与 `e2e_checklist.json`）
 - `deploy_modules` 与 `impact.md` 一致

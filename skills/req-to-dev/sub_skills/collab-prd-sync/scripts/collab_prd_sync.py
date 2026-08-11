@@ -46,6 +46,7 @@ def main() -> int:
 
     p_revise = sub.add_parser("meeting-revise", help="链路1 修订轮 prepare")
     p_revise.add_argument("--req-id", required=True)
+    p_revise.add_argument("--pull-intent-id", type=int, default=None)
 
     p_push_preview = sub.add_parser("push-preview", help="绑群 + Webhook；同一回合须阻塞 wait")
     p_push_preview.add_argument("--req-id", required=True)
@@ -168,7 +169,10 @@ def main() -> int:
         return _run("meeting_prepare.py", argv)
 
     if args.command == "meeting-revise":
-        return _run("meeting_revise_prepare.py", ["--req-id", args.req_id])
+        argv = ["--req-id", args.req_id]
+        if args.pull_intent_id is not None:
+            argv.extend(["--pull-intent-id", str(args.pull_intent_id)])
+        return _run("meeting_revise_prepare.py", argv)
 
     if args.command == "push-preview":
         argv = ["--req-id", args.req_id, "--patch", args.patch]

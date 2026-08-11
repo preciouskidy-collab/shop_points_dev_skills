@@ -12,6 +12,17 @@ commands: []
 
 # Skill: 本地 E2E（Cursor 内置浏览器）
 
+## 反模式（红线 R8.1 — 已发生过，禁止再犯）
+
+| 反模式 | 后果 | 正确做法 |
+|--------|------|----------|
+| 用 Playwright / headless Chromium 跑 PC 弹窗、CAS 登录 | 与 Pipeline `e2e_browser: cursor` 不一致；用户看不到 Glass 面板；CAS 易失败 | **仅** `cursor-ide-browser` MCP |
+| 用户已开页面仍后台 Playwright「因为登录难」 | 双浏览器、状态不一致 | `browser_tabs` 绑 glass-browser → navigate → snapshot |
+| 只 `open_resource` 不 `browser_navigate` | 用户看不到 Browser Tab | navigate + 说明右侧 Browser 面板 |
+| 用 Cursor 对话「已上传」代替企微 `upload_confirm` | 违反 R5 / e2e-upload-collab | notify → **阻塞 wait** |
+
+**为何上次「内置浏览器没生效」**：Agent 误走 Playwright；Glass 需 **Browser Automation = Browser Tab** 且操作 **glass-browser** 视图，不能只在 agent 内部 tab 跑自动化。
+
 ## 适用时机
 
 `local-stack-up`（方案 B nginx）**且启动验收通过**后。
@@ -127,11 +138,12 @@ python3 skills/req-to-dev/scripts/collab_e2e_upload.py wait \
 - 默认门店列：`TJDY0101`；城市：天津市 `120000`
 - 可放在 `changes/<req_id>/tests/`（如 `e2e_kecoin_TJDY0101.xlsx`）
 
-**PC 上传后 H5 联动验收**
+**PC 上传后 H5 联动验收** — 完整矩阵见 `playbooks/kecoin-upload-e2e-matrix.md`：
 
-1. 打开 `store-pointsV2/index` → 首页贝壳币 icon → `beikebi/index`
-2. 选择账期（如 `2026M9`）→ 活动卡片应含「线下活动配置」及实发/预估文案
-3. 进入 `beikebi/history` → 展开对应账期，应有发币明细行
+1. 记录 PC 弹窗 **upload_period**（如 `2026M9`）与活动 ID/城市
+2. `beikebi/index` → **账期选择器切至 upload_period**（禁止用默认当月）→ 线下活动卡片 + 金额
+3. `beikebi/history` → 展开 **同一 upload_period** → 明细行
+4. 负向：`E2E-PC-02` 申诉期外提交 → `hasSaveError=true`
 
 **明细无当月账期**（主页有卡片、history 缺账期）：读 `playbooks/apollo-mock-time.md`，调整 TEST Apollo `mockCurrentTime` 并选 **业务开关** 发布。
 

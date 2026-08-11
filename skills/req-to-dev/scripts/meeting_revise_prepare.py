@@ -24,13 +24,30 @@ from collab_common import (  # noqa: E402
     save_state,
 )
 from lark_cli import fetch  # noqa: E402
+from collab_inbox import load_inbox  # noqa: E402
+from collab_intent_consume import consume_collab_intent  # noqa: E402
 from patch_builder import build_agent_pending_plan, finalize_patch, new_approval_nonce  # noqa: E402
 from sender_roles import format_collab_messages_md, format_sender_roles_legend  # noqa: E402
+
+
+def _resolve_pull_intent_id(change_dir: Path, explicit: int | None) -> int | None:
+    if explicit is not None:
+        return explicit
+    inbox = load_inbox(change_dir)
+    if inbox and inbox.get("action") == "meeting_revise" and inbox.get("id") is not None:
+        return int(inbox["id"])
+    return None
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="评审修订轮 prepare（企微 /整理评审 后）")
     parser.add_argument("--req-id", required=True)
+    parser.add_argument(
+        "--pull-intent-id",
+        type=int,
+        default=None,
+        help="wait 返回的 meeting_revise intent；prepare 成功后自动 consume（未传则从 inbox 解析）",
+    )
     args = parser.parse_args()
 
     change_dir = find_change_dir(args.req_id)
@@ -152,6 +169,29 @@ def main() -> int:
     pr_review["revision_round"] = revision_round
     save_state(change_dir, state)
     append_log(change_dir, f"MEETING-REVISE prepare {patch_id} messages={len(messages)}")
+
+    pull_intent_id = _resolve_pull_intent_id(change_dir, args.pull_intent_id)
+    if pull_intent_id is not None:
+        consumed = consume_collab_intent(
+            pull_intent_id,
+            req_id=req_id,
+            expected_actions=("meeting_revise",),
+        )
+        consumed_ids = pr_review.setdefault("consumed_intent_ids", [])
+        if pull_intent_id not in consumed_ids:
+            consumed_ids.append(pull_intent_id)
+        pr_review["last_consumed_intent_id"] = pull_intent_id
+        save_state(change_dir, state)
+        append_log(
+            change_dir,
+            f"MEETING-REVISE consumed intent_id={pull_intent_id} action={consumed.get('action')}",
+        )
+    else:
+        print(
+            "WARN: 未提供 --pull-intent-id 且 inbox 无 meeting_revise；"
+            "wait 可能重复返回同一 intent（流程事故）",
+            file=sys.stderr,
+        )
 
     print(f"✓ patch: {patch_id}")
     print(f"✓ revise_prompt: {pdir / 'revise_prompt.md'}")

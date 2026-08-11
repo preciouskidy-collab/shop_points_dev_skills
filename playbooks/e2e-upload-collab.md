@@ -77,10 +77,10 @@ python3 skills/req-to-dev/scripts/collab_e2e_upload.py wait \
 
 | 来源 | 说明 |
 |------|------|
-| `upload_confirm` intent | shop-points-agent 解析群消息后入队（推荐，与 PRD approve 同架构） |
-| 群消息匹配 | Harness 轮询 `list_messages` + 确认语启发式（**当前兜底**，无需等新 intent 上线） |
+| `upload_confirm` intent | shop-points-agent 解析群消息 → `collab_intent` 入队（`intent_type=e2e_upload_intent`） |
+| 群消息匹配 | **已废弃**；仅 `--legacy-message-fallback` 时 Harness 本地兜底 |
 
-Agent 后端扩展（可选）：群消息 → `intent_type=e2e_upload_intent`, `action=upload_confirm`。
+Agent 后端：`CollabIntentParser` + `CollabIntentService` 解析 `确认 upload-NNN <nonce> 已上传` 或（存在 pending `e2e_upload` 时）`已上传`/`文件已选好` → `intent_type=e2e_upload_intent`, `action=upload_confirm`。
 
 ## 与 PRD wait 的区别
 

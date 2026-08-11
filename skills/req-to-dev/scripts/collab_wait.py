@@ -120,9 +120,14 @@ def main() -> int:
 
     action = intent.get("action")
     intent_id = intent.get("id")
+    handle_cmd = (
+        f"python3 skills/req-to-dev/scripts/collab_handle_intent.py "
+        f"--req-id {args.req_id} --pull-intent-id {intent_id} --action {action}"
+    )
     print(
-        f"✓ COLLAB_INTENT_RECEIVED action={action} intent_id={intent_id} "
-        f"→ 同一回合内处理（approve / meeting-revise / approve-design / tech-revise），勿结束对话",
+        f"✓ COLLAB_INTENT_RECEIVED action={action} intent_id={intent_id}\n"
+        f"→ 同一回合内执行: {handle_cmd}\n"
+        f"  meeting_revise/tech_revise 须在 meeting-revise/tech-revise 带 --pull-intent-id（prepare 成功后自动 consume）",
         file=sys.stderr,
     )
     return 0

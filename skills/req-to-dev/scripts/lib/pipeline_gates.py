@@ -79,7 +79,7 @@ def wecom_flow_lines(req_id: str, *, kind: str = "tech_design") -> list[str]:
             ">>> 【红线】企微 PRD 评审（同一回合内完成，禁止结束回合）：",
             "    1. finalize-plan → push-preview",
             f"    2. 阻塞: {wait_cmd}",
-            f"    3. meeting_revise（企微 `{REVISE_COMMAND_PRD}`）→ meeting-revise → 再 push-preview → 再 wait",
+            f"    3. meeting_revise（企微 `{REVISE_COMMAND_PRD}`）→ meeting-revise **--pull-intent-id <id>** → 再 push-preview → 再 wait",
             "    4. approve intent → approve --pull-intent-id",
             "    禁止：push-preview 后结束对话等用户在 Cursor 输入",
             "    禁止：collab_wait.py --action approve（会丢弃 meeting_revise，/整理评审 允许多次）",
@@ -93,7 +93,7 @@ def wecom_flow_lines(req_id: str, *, kind: str = "tech_design") -> list[str]:
         f"    3. 阻塞: {wait_cmd}",
         "    4. plan_approve intent → approve-design --pull-intent-id <id>",
         f"    5. tech_revise（企微 `{REVISE_COMMAND_TECH}`，勿用 {REVISE_COMMAND_PRD}）",
-        "       → tech-revise → 修订 design_plan → finalize-design → push-preview → 再 wait",
+        "       → tech-revise **--pull-intent-id <id>** → 修订 design_plan → finalize-design → push-preview → 再 wait",
         "",
         ">>> 【红线】plan-approve 通过前禁止：检出 feature 分支、修改 shop-points/store-integral 业务代码",
         "    仅允许写 changes/<req_id>/ 内 spec、impact、api-contract、tech-design",
@@ -107,7 +107,8 @@ def wecom_flow_lines(req_id: str, *, kind: str = "tech_design") -> list[str]:
 def local_verification_lines() -> list[str]:
     return [
         ">>> 【默认验收】integration_mode=local（scope-eval 默认）",
-        "    local-stack-up（nginx 本地网关）→ local-e2e-test（Cursor 内置浏览器）",
+        "    local-stack-up → local-e2e-test（**run_workflow continue** 自动连续执行）",
         "    → commit-push（无 deploy-approve）→ release",
         ">>> 大禹 + agent-browser 仅当用户明确要求时将 impact.integration_mode 改为 dayu",
+        ">>> 连续推进: python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>",
     ]

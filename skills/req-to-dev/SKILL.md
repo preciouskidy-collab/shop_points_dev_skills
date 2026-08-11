@@ -47,7 +47,7 @@ fetch-prd → break-down → scope-eval
     → [企微技术方案评审 + approve-design] 🔒 plan-approve（phase=tech_design_review）
     → backend-coding → frontend-coding → frontend-handoff（契约对齐）
     → backend-review → frontend-review → backend-test-local
-    → local-stack-up → local-e2e-test（Cursor 浏览器，默认）
+    → local-stack-up → local-e2e-test（**`run_workflow continue` 自动连续执行**）
     → commit-push → release
     → （可选）dayu-deploy → e2e-browser-test 仅当 integration_mode=dayu 且用户明确要求
 ```
@@ -169,7 +169,15 @@ Playbook: `spring-boot-coding`。产出后端代码 diff，`mvn compile` 通过�
 | `frontend-review` | frontend-review-checklist | `review/frontend_review_v1.md`（可跳过） |
 | `backend-test-local` | test-authoring | `tests/backend_test_report.md` |
 
-本地接口测试用 `http://local.ttb.test.ke.com` + curl；最终页面验收在 `local-e2e-test`（Cursor 浏览器）。
+**编码后连续推进（R6，禁止中途断开）**：
+
+```bash
+python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>
+```
+
+自动执行 review → `local_stack_up` → `local_e2e_autorun`（VPN 默认连通，stack check 带重试）并 `advance` 至 `commit-push` 前。
+
+本地接口测试用 `http://local.ttb.test.ke.com` + curl；页面/API 验收由 `local_e2e_autorun.py` 自动产出 `tests/local_e2e_report.md`。
 
 ### Step 12：commit-push（自动）
 

@@ -73,12 +73,20 @@
 
 ## 6. 验收场景（E2E）
 
+> **贝壳币上传类需求**：§6 须覆盖 `skills/req-to-dev/references/kecoin-upload-e2e-cases.yaml` 全部 `E2E-*` ID；H5 用例**必须**写「切换至 `upload_period`」步骤，**禁止**仅用页面默认账期；须含 **E2E-PC-02 申诉期外负向**（`hasSaveError=true`）。默认测试数据见 `test_context`（天津 / 253 / TJDY0101 / 2026M9）。
+
 | ID | 端 | 前置条件 | 操作步骤 | 期望结果 |
 |----|----|----------|----------|----------|
+| E2E-PC-01a | PC | 活动 **253（天津市）** | 筛选活动 → 上传贝壳币弹窗 | 记录 **upload_period**（如 2026M9） |
+| E2E-PC-01b | PC | 01a 完成 | notify → 用户选 Excel → wait `upload_confirm` | 协作确认收到 |
+| E2E-PC-01c | PC | 申诉期内 | 点确定 → 列表 **已生效(102)** | 账期与 upload_period 一致 |
+| **E2E-PC-02** | PC | **申诉期外**（Apollo mock） | 同活动再次提交 | **hasSaveError=true**，无新 102 |
+| E2E-H5-01 | H5 | PC 上传成功 + Apollo mock | beikebi/index → **切换至上传账期** | 线下活动卡片/金额正确 |
+| E2E-H5-02 | H5 | Apollo mock | beikebi/history → **同 upload_period** | 明细账期与上传一致 |
 | E2E-01 | H5 | 已登录 TJDY0101（天津市门店） | 进入首页 → 查看 xxx | 显示新字段，值与接口一致 |
 | E2E-02 | PC | 已登录管理端；城市 **天津市** | 进入活动配置 → 编辑 | 保存成功，列表刷新 |
 
-> 默认测试数据：城市 **天津市**（`cityCode=120000`）、门店 **TJDY0101** → `knowledge/test-env-topology.md`
+> 默认测试数据：城市 **天津市**（`cityCode=120000`）、活动 **253**、门店 **TJDY0101**、`upload_period` **2026M9** → `knowledge/test-env-topology.md`
 
 ## 7. 部署依赖
 

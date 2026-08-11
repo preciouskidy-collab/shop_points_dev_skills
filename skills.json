@@ -225,13 +225,15 @@
           "equals": "none"
         },
         "artifacts": [
-          "tests/local_e2e_report.md"
+          "tests/local_e2e_report.md",
+          "tests/e2e_checklist.json"
         ],
         "resources": [
           "playbook-local-e2e-browser-test",
           "playbook-local-stack-troubleshooting",
           "playbook-apollo-mock-time",
-          "playbook-e2e-upload-collab"
+          "playbook-e2e-upload-collab",
+          "playbook-kecoin-upload-e2e-matrix"
         ],
         "max_retries": 3
       },
@@ -877,6 +879,29 @@
         "等我上传"
       ],
       "entry": "playbooks/e2e-upload-collab.md"
+    },
+    {
+      "id": "playbook-kecoin-upload-e2e-matrix",
+      "name": "贝壳币上传 E2E 完整矩阵",
+      "description": "账期/城市对齐、申诉期正负向、H5 卡片+明细同账期验收；含 Agent 反模式复盘",
+      "version": "1.0.0",
+      "category": "playbooks",
+      "tags": [
+        "e2e",
+        "keCoin",
+        "upload",
+        "appeal",
+        "anti-patterns"
+      ],
+      "trigger_phrases": [
+        "贝壳币上传 E2E",
+        "kecoin upload e2e",
+        "上传账期",
+        "申诉期外上传",
+        "hasSaveError",
+        "beikebi 账期"
+      ],
+      "entry": "playbooks/kecoin-upload-e2e-matrix.md"
     },
     {
       "id": "playbook-wecom-collab-review",

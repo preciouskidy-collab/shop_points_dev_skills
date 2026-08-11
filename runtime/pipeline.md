@@ -40,7 +40,7 @@ commit-push → dayu-deploy → e2e-browser-test → release
 
 ## 执行引擎
 
-- **自动阶段**：`run_workflow.py advance`
+- **自动阶段**：`run_workflow.py advance`；编码后 **`run_workflow.py continue`**（review → local-e2e 连续执行）
 - **唯一阻塞阶段**：`plan-approve`（技术方案企微评审）
 - **条件跳过**：`frontend_scope`、`api_change` 等见下表
 - **状态迁移**：`_sync_stages_with_config` 与 `skills.json` 对齐（已移除 `deploy-approve` 的旧 state 自动迁移至 `commit-push`）
