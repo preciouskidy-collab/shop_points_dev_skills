@@ -273,6 +273,10 @@ python3 skills/req-to-dev/scripts/local_e2e_checklist.py --req-id <id> gate   # 
 
 Playbook：`playbooks/local-e2e-browser-test.md` §浏览器工具、§反模式。
 
+**Cursor 规则（全局 alwaysApply）**：`.cursor/rules/cursor-browser-only.mdc`
+
+**MCP 未挂载时**：`GetMcpTools` 无 `cursor-ide-browser` 或 `CallMcpTool` 报 `server does not exist` → **停步**，要求用户 Settings → Browser Automation = **Browser Tab** 并新开会话；**禁止**降级外部浏览器。
+
 ### R8.2 · mockCurrentTime 仅 Apollo Portal 配置（禁止启动参数 / 本地 JVM 篡改）
 
 申诉期正负向（`E2E-PC-01c` / `E2E-PC-02`）、H5 明细账期（`APOLLO-MOCK-01` / `E2E-H5-*`）依赖 TEST 环境 **`shop-points` / `application` / `mockCurrentTime`**，须：

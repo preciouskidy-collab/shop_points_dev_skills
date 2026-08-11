@@ -1,5 +1,17 @@
 # shop_points_dev_skills — Agent 指引
 
+## Cursor 内置浏览器 MCP（硬性 · 全局）
+
+**页面/UI 自动化只允许 `cursor-ide-browser` MCP**，禁止 Playwright、agent-browser、本机 Chrome/Chromium。
+
+| 允许 | 禁止 |
+|------|------|
+| `browser_navigate` → `browser_lock` → `browser_snapshot` → `browser_click` / `browser_fill` | Playwright、Selenium、`agent-browser`、用户 Chrome |
+| Glass **Browser Tab**（Browser Automation = Browser Tab） | `open_resource` 当自动化用（只能打开，不能操作） |
+| MCP 不可用时：停步并让用户开 Browser Tab / 新会话 | MCP 挂了改跑外部浏览器「凑合完成」 |
+
+Cursor 规则：`.cursor/rules/cursor-browser-only.mdc` · 红线：`guardrails/pipeline-redlines.md` R8.1
+
 ## collab-prd-sync 触发词（必读）
 
 **任何「修改/更新飞书 PRD 文档」的诉求都走 collab-prd-sync**（不是端到端开发）。先做**链路判定**，再 dry-run → **人工对话确认** → 才 approve 写飞书。
