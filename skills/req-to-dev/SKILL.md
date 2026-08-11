@@ -48,8 +48,8 @@ fetch-prd → break-down → scope-eval
     → backend-coding → frontend-coding → frontend-handoff（契约对齐）
     → backend-review → frontend-review → backend-test-local
     → local-stack-up → local-e2e-test（**`run_workflow continue` 自动连续执行**）
-    → commit-push → release
-    → （可选）dayu-deploy → e2e-browser-test 仅当 integration_mode=dayu 且用户明确要求
+    → **[Pipeline 终态 · local 默认]**（E2E 通过后自动 completed）
+    → commit-push / dayu / release 仅 `integration_mode=dayu` 或用户显式要求时
 ```
 
 **设计链（v0.6）**：先协议 → 详设 → **企微评审** → 审批解锁 → **才编码** → 本地验收。
@@ -175,13 +175,13 @@ Playbook: `spring-boot-coding`。产出后端代码 diff，`mvn compile` 通过�
 python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>
 ```
 
-自动执行 review → `local_stack_up` → `local_e2e_autorun`（VPN 默认连通，stack check 带重试）并 `advance` 至 `commit-push` 前。
+自动执行 review → `local_stack_up` → E2E checklist 全 PASS 后 **Pipeline 自动终态**（local 模式不进入 commit-push）。
 
-本地接口测试用 `http://local.ttb.test.ke.com` + curl；页面/API 验收由 `local_e2e_autorun.py` 自动产出 `tests/local_e2e_report.md`。
+本地接口测试用 `http://local.ttb.test.ke.com` + curl；完整验收见 `tests/e2e_checklist.json` + `tests/local_e2e_report.md`。
 
-### Step 12：commit-push（自动）
+### Step 12：commit-push（可选，非 local 默认终态）
 
-本地 E2E 通过后 **无部署前人工审批**，`advance` 直接进入本阶段。
+**local 模式 E2E 通过后 Pipeline 已结束**；仅当用户明确要求推送代码，或 `integration_mode=dayu` 时执行。
 
 Playbook: `commit-push`。多仓 commit + push `feature/<name>`，产出 `deploy/git_push_report.md`。
 

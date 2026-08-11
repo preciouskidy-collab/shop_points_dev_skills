@@ -19,6 +19,8 @@ backend-review → frontend-review → backend-test-local
     ↓
 local-stack-up → local-e2e-test          # 默认 integration_mode=local，Cursor 内置浏览器
     ↓
+[Pipeline 终态 · local 默认]             # E2E 通过后自动结束，不进入 commit-push
+    ↓（仅 integration_mode=dayu 或显式 pipeline_terminal 覆盖时继续）
 commit-push → dayu-deploy → e2e-browser-test → release
                                           # dayu/e2e 在 local 模式下跳过
 ```
@@ -41,6 +43,7 @@ commit-push → dayu-deploy → e2e-browser-test → release
 ## 执行引擎
 
 - **自动阶段**：`run_workflow.py advance`；编码后 **`run_workflow.py continue`**（review → local-e2e 连续执行）
+- **local 默认终态**：`local-e2e-test` 通过后 Pipeline **自动 completed**，`commit-push` 及之后阶段标为 `skipped`（见 `pipeline_terminal.py`）
 - **唯一阻塞阶段**：`plan-approve`（技术方案企微评审）
 - **条件跳过**：`frontend_scope`、`api_change` 等见下表
 - **状态迁移**：`_sync_stages_with_config` 与 `skills.json` 对齐（已移除 `deploy-approve` 的旧 state 自动迁移至 `commit-push`）
@@ -89,5 +92,7 @@ commit-push → dayu-deploy → e2e-browser-test → release
 
 ## Git / 部署
 
-- **无部署前人工审批**：`local-e2e-test` 通过后 `advance` 直接进入 `commit-push`
-- 大禹部署仅当 `integration_mode=dayu` 且用户明确要求
+- **local 默认**：`local-e2e-test` 通过后 Pipeline **自动终态**；**不**自动 `commit-push`
+- 需推送 feature 分支：用户显式执行 `playbooks/commit-push.md`（非 Pipeline 必经阶段）
+- 大禹全链路：将 `impact.integration_mode` 设为 `dayu`，终态为 `release`
+- 显式覆盖终态：`impact.pipeline_terminal: <stage_id>`

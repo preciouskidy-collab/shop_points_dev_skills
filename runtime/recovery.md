@@ -59,7 +59,7 @@ Pipeline 中有 **一个阻塞点**（必须人工）：
 |------|----------------|------------|----------|------|
 | 技术方案评审 | `plan-approve` | `tech_design_review` | spec + impact + api-contract + tech-design + frontend-design | 企微确认 → `approve-design` → backend-coding / 驳回 → scope-eval |
 
-`local-e2e-test` 通过后 **无** `deploy-approve`，`advance` 直接进入 `commit-push`。
+`local-e2e-test` 通过后（local 默认）**Pipeline 自动终态**；`commit-push` 仅 dayu 路径或用户显式要求。
 
 驳回时运行 `run_workflow.py reject --reason "<修改意见>"`，Pipeline 回退到 scope-eval，重新执行 scope-eval → api-contract → tech-design → frontend-design → plan-approve。
 

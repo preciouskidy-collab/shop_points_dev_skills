@@ -3,6 +3,7 @@
 Pipeline 连续自动推进：review → test → local-stack-up → local-e2e-test。
 
 在编码完成后调用，避免 Agent 中途结束回合、让用户手动跑 E2E。
+local 模式（默认）在 local-e2e-test 通过后 Pipeline 自动终态，不进入 commit-push。
 
 用法:
   python3 pipeline_autorun.py --req-id 20260810-prd
@@ -23,6 +24,7 @@ sys.path.insert(0, str(_LIB))
 
 from collab_common import find_change_dir  # noqa: E402
 from pipeline_stage_runners import execute_stage  # noqa: E402
+from pipeline_terminal import pipeline_is_complete, terminal_stage_id  # noqa: E402
 
 # 编码完成后可无人值守连续执行的阶段（至 local-e2e-test 止）
 AUTORUN_STAGE_IDS = frozenset(
@@ -34,8 +36,6 @@ AUTORUN_STAGE_IDS = frozenset(
         "local-e2e-test",
     }
 )
-
-STOP_BEFORE = "commit-push"
 
 
 def _load_state(change_dir: Path) -> dict:
@@ -75,7 +75,13 @@ def autorun(req_id: str, *, dry_run: bool = False) -> int:
     state = _load_state(change_dir)
     name = state.get("name", req_id)
 
+    if pipeline_is_complete(state, change_dir):
+        terminal = state.get("terminal_stage") or terminal_stage_id(change_dir)
+        print(f"✓ Pipeline 已完成（终态: {terminal}）")
+        return 0
+
     stages = state.get("stages", [])
+    terminal = terminal_stage_id(change_dir)
     max_steps = len(stages) * 2
     steps = 0
 
@@ -85,8 +91,8 @@ def autorun(req_id: str, *, dry_run: bool = False) -> int:
         current = stages[idx]
         stage_id = current.get("id", "")
 
-        if stage_id == STOP_BEFORE:
-            print(f"✓ 已推进至 {STOP_BEFORE} 前阶段完成；commit-push 需显式 advance")
+        if pipeline_is_complete(state, change_dir):
+            print(f"✓ autorun 完成，Pipeline 终态: {terminal}")
             return 0
 
         if stage_id not in AUTORUN_STAGE_IDS:
@@ -95,6 +101,9 @@ def autorun(req_id: str, *, dry_run: bool = False) -> int:
                 if code != 0:
                     return code
                 state = _load_state(change_dir)
+                if pipeline_is_complete(state, change_dir):
+                    print(f"✓ autorun 完成，Pipeline 终态: {terminal}")
+                    return 0
                 continue
             print(f"ℹ 当前阶段 {stage_id} 不在自动执行范围，停止")
             return 0
@@ -117,6 +126,9 @@ def autorun(req_id: str, *, dry_run: bool = False) -> int:
             if code != 0:
                 return code
             state = _load_state(change_dir)
+            if pipeline_is_complete(state, change_dir):
+                print(f"✓ autorun 完成，Pipeline 终态: {terminal}")
+                return 0
             continue
 
         artifacts = stage_def.get("artifacts") or []
@@ -143,9 +155,8 @@ def autorun(req_id: str, *, dry_run: bool = False) -> int:
                 return code
 
         state = _load_state(change_dir)
-        idx = int(state.get("current_stage", 0))
-        if stages[idx].get("id") == STOP_BEFORE:
-            print(f"✓ autorun 完成，当前停在 {STOP_BEFORE}")
+        if pipeline_is_complete(state, change_dir):
+            print(f"✓ autorun 完成，Pipeline 终态: {terminal}")
             return 0
 
     print("ERROR: autorun 超过最大步数", file=sys.stderr)

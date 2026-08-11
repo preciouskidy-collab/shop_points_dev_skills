@@ -220,6 +220,7 @@
         "id": "local-e2e-test",
         "name": "本地 E2E（Cursor 浏览器）",
         "blocking": false,
+        "terminal_when_local": true,
         "skip_when": {
           "impact_field": "frontend_scope",
           "equals": "none"
@@ -750,7 +751,7 @@
     {
       "id": "playbook-commit-push",
       "name": "多仓提交推送",
-      "description": "local-e2e-test 通过后多仓库 commit 并 push feature 分支（无 deploy-approve）",
+      "description": "多仓库 commit/push（非 local 默认 Pipeline 终态；用户显式要求或 integration_mode=dayu 时执行）",
       "version": "0.1.0",
       "category": "playbooks",
       "tags": [

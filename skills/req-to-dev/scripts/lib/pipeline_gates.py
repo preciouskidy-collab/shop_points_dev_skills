@@ -108,7 +108,8 @@ def local_verification_lines() -> list[str]:
     return [
         ">>> 【默认验收】integration_mode=local（scope-eval 默认）",
         "    local-stack-up → local-e2e-test（**run_workflow continue** 自动连续执行）",
-        "    → commit-push（无 deploy-approve）→ release",
-        ">>> 大禹 + agent-browser 仅当用户明确要求时将 impact.integration_mode 改为 dayu",
+        "    → **Pipeline 自动终态**（local 模式 E2E 通过后结束，不自动 commit-push）",
+        ">>> 需推送代码：显式执行 playbooks/commit-push.md（非 Pipeline 默认终态）",
+        ">>> 大禹 + agent-browser：将 impact.integration_mode 改为 dayu（终态延至 release）",
         ">>> 连续推进: python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>",
     ]

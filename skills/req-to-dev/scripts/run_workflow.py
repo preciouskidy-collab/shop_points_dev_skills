@@ -591,13 +591,53 @@ def cmd_status(args):
 
 
 def cmd_continue(args):
-    """编码后连续自动执行 review → local-e2e-test（见 pipeline_autorun.py）。"""
+    """编码后连续自动执行 review → local-e2e-test；local 模式 E2E 通过后 Pipeline 自动终态。"""
     script = _SCRIPT_DIR / "pipeline_autorun.py"
     proc = subprocess.run(
         [sys.executable, str(script), "--req-id", args.name],
         cwd=str(_PROJECT_ROOT),
     )
     sys.exit(proc.returncode)
+
+
+def cmd_finalize(args):
+    """将已在终态阶段完成但尚未收口的 Pipeline 标记为 completed（修复 stuck 在 commit-push）。"""
+    from pipeline_terminal import (  # noqa: WPS433
+        finalize_pipeline,
+        pipeline_is_complete,
+        terminal_completion_message,
+        terminal_stage_id,
+    )
+
+    change_dir = _find_change_dir(args.name)
+    if not change_dir:
+        print(f"ERROR: 找不到 change 目录: *-{args.name}", file=sys.stderr)
+        sys.exit(1)
+
+    state = _load_state(change_dir)
+    terminal = terminal_stage_id(change_dir)
+
+    if pipeline_is_complete(state, change_dir):
+        print(f"✓ Pipeline 已是 completed（终态: {state.get('terminal_stage', terminal)}）")
+        return
+
+    terminal_stage = next((s for s in state["stages"] if s.get("id") == terminal), None)
+    if not terminal_stage or terminal_stage.get("status") != "completed":
+        print(
+            f"ERROR: 终态阶段 {terminal} 尚未 completed，无法收口",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    finalize_pipeline(
+        change_dir,
+        state,
+        terminal_stage_id_value=terminal,
+        log_fn=_log,
+        duration_fn=_duration,
+    )
+    for line in terminal_completion_message(change_dir, state):
+        print(line)
 
 
 def cmd_advance(args):
@@ -647,6 +687,25 @@ def cmd_advance(args):
 
 def _advance_to_next(change_dir: Path, state: dict, idx: int, name: str):
     """从已完成的阶段推进到下一阶段"""
+    from pipeline_terminal import (  # noqa: WPS433
+        finalize_pipeline,
+        is_terminal_stage,
+        terminal_completion_message,
+    )
+
+    completed_id = state["stages"][idx].get("id", "")
+    if is_terminal_stage(change_dir, completed_id):
+        finalize_pipeline(
+            change_dir,
+            state,
+            terminal_stage_id_value=completed_id,
+            log_fn=_log,
+            duration_fn=_duration,
+        )
+        for line in terminal_completion_message(change_dir, state):
+            print(line)
+        return
+
     project = state.get("project", "shop-points")
 
     # 已是最后一个阶段？
@@ -988,9 +1047,15 @@ def main():
     # continue
     p_continue = subparsers.add_parser(
         "continue",
-        help="编码后连续自动推进 review → local-e2e-test（不停回合）",
+        help="编码后连续自动推进 review → local-e2e-test；local 模式 E2E 通过后自动终态",
     )
     p_continue.add_argument("--name", required=True, help="需求名称 / req_id")
+
+    p_finalize = subparsers.add_parser(
+        "finalize",
+        help="终态收口：local-e2e-test 已完成但 Pipeline 未结束时调用",
+    )
+    p_finalize.add_argument("--name", required=True, help="需求名称 / req_id")
 
     args = parser.parse_args()
 
@@ -1003,6 +1068,7 @@ def main():
         "status": cmd_status,
         "advance": cmd_advance,
         "continue": cmd_continue,
+        "finalize": cmd_finalize,
         "approve": cmd_approve,
         "reject": cmd_reject,
         "fail": cmd_fail,

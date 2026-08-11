@@ -58,7 +58,7 @@ python3 skills/req-to-dev/sub_skills/collab-prd-sync/scripts/collab_prd_sync.py 
 | R2.2 禁止 action 过滤 | **禁止** `collab_wait --action approve`；须无过滤 wait，支持多次 `/整理评审` |
 | R2.3 修订 intent 须消费 | `meeting-revise` / `tech-revise` **必须** `--pull-intent-id`；prepare 成功后自动 consume |
 | R3 先方案后编码 | plan-approve（=技术方案评审）前 **禁止**改 shop-points/store-integral；须 `approve-design` 解锁 |
-| R4 验收默认本地 | `integration_mode: local` + Cursor 浏览器 E2E；通过后 **直接** commit-push（无 deploy-approve） |
+| R4 验收默认本地 | `integration_mode: local` + Cursor 浏览器 E2E；通过后 **Pipeline 自动终态**（不自动 commit-push） |
 | R6 编码后连续推进 | `run_workflow continue` 自动 review → stack → E2E；**禁止**中途断开让用户手动测 |
 | R6.1 E2E 完整清单 | 贝壳币上传须 `e2e_checklist.json` 全 PASS（含 **E2E-PC-02 申诉期负向**、H5 **同 upload_period**）；见 `playbooks/kecoin-upload-e2e-matrix.md` |
 | **R8.1 浏览器** | `local-e2e-test` **仅** Cursor 内置浏览器 MCP；**禁止** Playwright/headless 替代 |

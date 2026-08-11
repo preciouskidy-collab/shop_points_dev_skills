@@ -14,7 +14,14 @@ commands: []
 
 ## 适用时机
 
-`local-e2e-test`（或 `e2e-browser-test`，dayu 路径）完成后，`advance` 进入本阶段时执行。
+**非 local 默认 Pipeline 终态**。`integration_mode=local` 时 Pipeline 在 `local-e2e-test` 通过后即 **自动 completed**，本阶段不自动执行。
+
+以下情况才进入本 playbook：
+
+- 用户明确要求 commit / push
+- `impact.integration_mode: dayu`（大禹全链路，终态为 `release`）
+
+`local-e2e-test`（或 `e2e-browser-test`，dayu 路径）完成后，用户显式要求推送时执行。
 
 > **v0.7+**：已取消 `deploy-approve`；本地验收通过后 **无需** 额外人工审批即可 commit-push。
 

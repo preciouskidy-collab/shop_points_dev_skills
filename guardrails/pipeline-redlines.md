@@ -26,7 +26,8 @@ commands: []
 - `collab-tech-design-sync prepare` / `finalize-design` 后即 `push-state phase=tech_design_review`
 - **`push-preview` 发送到企微时，已是技术方案评审阶段**（不是「预览完才进入评审」）
 - 唯一人工阻塞点：**技术方案企微评审**（`approve-design` 解锁编码）
-- **已取消** `deploy-approve`：本地 E2E 通过后 `advance` 直接进入 `commit-push`
+- **已取消** `deploy-approve`
+- **local 默认终态**：`local-e2e-test` 通过后 Pipeline **自动 completed**；**不**自动进入 `commit-push`（见 R4、`pipeline_terminal.py`）
 
 ## R1 · 企微推送不可漏
 
@@ -170,15 +171,18 @@ e2e_browser: cursor
 
 | 模式 | 验收路径 |
 |------|----------|
-| **local（默认）** | `local-stack-up` → `local-e2e-test`（Cursor 浏览器 MCP）→ **`commit-push`**（无 deploy-approve）→ `release` |
-| dayu（须用户明确要求） | 将 `integration_mode` 改为 `dayu` → `dayu-deploy` → `e2e-browser-test`（agent-browser） |
+| **local（默认）** | `local-stack-up` → `local-e2e-test`（Cursor 浏览器 MCP）→ **Pipeline 自动终态** |
+| dayu（须用户明确要求） | `integration_mode: dayu` → `commit-push` → `dayu-deploy` → `e2e-browser-test` → `release` |
 
+- **local 模式 E2E 通过后 Pipeline 即结束**；`commit-push` 仅用户显式要求时执行（`playbooks/commit-push.md`）
 - 不得用「跳过大禹」为由跳过 `local-stack-up` / `local-e2e-test`
 - 不得默认走 AgentBrowser + 大禹点击测试
 
 ## R6 · 编码后 Pipeline 连续推进（禁止中途断开）
 
 编码完成（`frontend-handoff` 之后）**同一 Agent 回合内**须连续执行至 `local-e2e-test` 通过，**禁止**在 review / 本地栈 / E2E 之间结束回合让用户手动推进。
+
+**E2E 通过后（local 默认）Pipeline 自动终态**，不得继续 `advance` 进入 `commit-push`，除非用户明确要求推送或 `integration_mode=dayu`。
 
 ```bash
 python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>
