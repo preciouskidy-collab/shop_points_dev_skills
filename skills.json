@@ -764,25 +764,25 @@
     {
       "id": "playbook-dayu-deploy",
       "name": "大禹部署",
-      "description": "通过 agent-browser 在大禹平台构建部署测试环境",
-      "version": "0.1.0",
+      "description": "通过 Cursor 内置浏览器 MCP 在大禹平台构建部署测试环境",
+      "version": "0.2.0",
       "category": "playbooks",
       "tags": [
         "deploy",
         "dayu",
-        "agent-browser"
+        "cursor-browser"
       ],
       "entry": "playbooks/dayu-deploy.md"
     },
     {
       "id": "playbook-e2e-browser-test",
       "name": "E2E 浏览器自测",
-      "description": "基于 FDH 用例在测试环境页面执行 agent-browser E2E",
-      "version": "0.1.0",
+      "description": "基于 FDH 用例在测试环境页面执行 Cursor 内置浏览器 E2E",
+      "version": "0.2.0",
       "category": "playbooks",
       "tags": [
         "e2e",
-        "agent-browser",
+        "cursor-browser",
         "test"
       ],
       "entry": "playbooks/e2e-browser-test.md"

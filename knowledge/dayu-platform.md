@@ -67,15 +67,15 @@ commands: []
 
 项目名与模块名一致：`shop-points` 或 `shop-points-lottery`。
 
-## AgentBrowser 环境变量
+## Cursor 内置浏览器（部署与 E2E）
 
-部署与 E2E 使用本地 `agent-browser` CLI：
+大禹部署与测试环境 E2E **仅** 使用 `cursor-ide-browser` MCP（Glass **Browser Tab**）：
 
-```bash
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.agent-browser/browsers/chrome-149.0.7827.55/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-export AGENT_BROWSER_HEADED=1
-export AGENT_BROWSER_SESSION_NAME="req-to-dev-<change-name>"
-```
+- `browser_navigate` → 大禹 / 测试环境 URL
+- `browser_snapshot` → `browser_click` / `browser_fill`
+- `browser_take_screenshot` 取证
+
+**禁止**：`agent-browser` CLI、Playwright、本机 Chrome（含已删除的 `ab_h5_bypass_http.py`）。
 
 ## 常见失败场景
 

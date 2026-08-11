@@ -1,28 +1,33 @@
 ---
 name: e2e-browser-test
-description: "基于 FDH 验收场景，使用 agent-browser 在测试环境页面执行 E2E 自测"
-version: "0.1.0"
+description: "基于 FDH 验收场景，使用 Cursor 内置浏览器 MCP 在测试环境页面执行 E2E 自测"
+version: "0.2.0"
 category: playbooks
 tags:
   - e2e
-  - agent-browser
+  - cursor-browser
   - test-env
 commands: []
 ---
 
-# Skill: 测试环境 E2E 浏览器自测
+# Skill: 测试环境 E2E 浏览器自测（Cursor 内置浏览器）
+
+> **红线 R8.1**：本阶段 **仅** 使用 `cursor-ide-browser` MCP（Glass **Browser Tab**）。**禁止** Playwright、agent-browser、本机 Chrome/Chromium 脚本做 CAS 登录或页面交互。
 
 ## 适用时机
 
-`dayu-deploy` 全部模块部署成功后。
+`dayu-deploy` 全部模块部署成功后（`integration_mode: dayu`）。
 
 **跳过条件**：`impact/impact.md` 中 `frontend_scope: none`。
+
+本地联调栈验收见 `playbooks/local-e2e-browser-test.md`（`local-e2e-test` 阶段）。
 
 ## 前置条件
 
 - `deploy/dayu_deploy_report.md` 全部模块 ✅
 - `handoff/frontend-handoff.md` §6 或 `handoff/api-contract.yaml` 的 `e2e_cases` 已就绪
 - `secrets.local.json` 中 `test_env_app` 凭证已配置
+- Cursor **Browser Automation = Browser Tab**，操作 **glass-browser** 视图
 
 ## 测试入口
 
@@ -33,100 +38,45 @@ commands: []
 
 详见 `knowledge/test-env-topology.md`。
 
-**默认测试数据**：城市 **天津市**（`cityCode=120000`）、门店 **TJDY0101**（PC 筛选城市、上传 Excel 门店列）。
+**默认测试数据**：城市 **天津市**（`cityCode=120000`）、门店 **TJDY0101**。
 
-## AgentBrowser 初始化
+## 浏览器工具（唯一路径）
 
-```bash
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.agent-browser/browsers/chrome-149.0.7827.55/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-export AGENT_BROWSER_HEADED=1
-export AGENT_BROWSER_SESSION_NAME="req-to-dev-<change-name>-h5"
+| 操作 | MCP 工具 |
+|------|----------|
+| 打开页面 | `browser_navigate` |
+| 锁定会话 | `browser_lock` |
+| 读页面结构 | `browser_snapshot` |
+| 点击 / 输入 | `browser_click` / `browser_fill` |
+| 截图验证 | `browser_take_screenshot` |
 
-# ⚠️ H5 测试环境是 HTTP，必须放行 CAS 回调链路上的所有 http origin（见下节）
-export AGENT_BROWSER_ARGS="--unsafely-treat-insecure-origin-as-secure=http://integral.ttb.test.ke.com,http://shop-points-lottery.shop-points-test01.ttb.test.ke.com,http://shop-points-lottery.shop-points-test01.ttb.test.ke.com:80,http://shop-points.shop-points-test01.ttb.test.ke.com,http://shop-points.shop-points-test01.ttb.test.ke.com:80,--disable-features=HttpsFirstMode,HttpsUpgrades,HttpsFirstBalancedMode,--disable-web-security,--allow-running-insecure-content,--ignore-certificate-errors,--test-type,--remote-allow-origins=*"
+**禁止**：`playwright`、`ab_h5_bypass_http.py`、`agent-browser`、Selenium、独立 Chrome 进程（含「Chrome for Testing」）。
 
-# H5 必须手机模式（在打开页面之前设置）
-agent-browser close
-agent-browser --args "$AGENT_BROWSER_ARGS" open about:blank
-agent-browser set device "iPhone 12"
-agent-browser open "http://integral.ttb.test.ke.com/fuwujin-mall/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101"
+## 登录（CAS）
 
-# 或一键：close + 手机模式 + CAS 登录（员工 → 账号登录 → 填表）
-python3 skills/req-to-dev/scripts/ab_h5_bypass_http.py
-```
+1. `browser_tabs` → `browser_navigate` 打开 H5/PC 入口
+2. 若跳 CAS：**员工** → **账号登录** → 填 `test_env_app` 工号密码 → **登录**
+3. 回跳后 `browser_snapshot` 确认已进入业务页
+4. 同 Browser Tab 会话内复用登录态，后续用例无需重复登录
 
-### HTTP 不安全连接页（登录后常见）
-
-**现象**：CAS 登录（HTTPS）成功后跳回 `http://integral.ttb.test.ke.com`，Chrome 弹出「此网站不支持安全连接」，需点 **「继续访问网站」**。CLI 可能报 `ERR_BLOCKED_BY_CLIENT` 或停在 `chrome-error://chromewebdata/`。
-
-**原因**：不是广告拦截，是 Chrome 对 HTTP 站点的安全策略；登录重定向会再次触发。
-
-**处理（二选一，推荐 A）**：
-
-**A. 启动参数放行（推荐，可免手点）**——`--args` 仅在 **新启动浏览器** 时生效：
-
-```bash
-agent-browser close   # 若 daemon 已在跑，必须先 close
-agent-browser --args "$AGENT_BROWSER_ARGS" open "http://integral.ttb.test.ke.com/fuwujin-mall/index?shopCode=TJDY0101&shopCodeInnerTest=TJDY0101"
-agent-browser wait --load networkidle
-```
-
-**B. 兜底（极少需要）**：`python3 skills/req-to-dev/scripts/ab_h5_bypass_http.py proceed-only`（osascript 点原生按钮，需 macOS「辅助功能」权限）。`find role button click` 对 `chrome-error` 无效，**不要依赖手点**。
-
-**注意**：
-
-- 大禹部署与 H5 E2E 建议用 **不同** `AGENT_BROWSER_SESSION_NAME`（如 `req-to-dev-<name>` vs `req-to-dev-<name>-h5`）。
-- 不要随便 `agent-browser close` 后不带 `--args` 再 open H5，否则会再次撞上 HTTP 拦截。
-- H5 内点击 React 按钮优先用：`agent-browser find role button click --name "去兑换"`（比 `click @eN` 稳）。
-- **多 Tab 说明**：CAS 登录会依次跳转 `integral` → `shop-points-lottery` / `shop-points` → `test-login`，Chrome 常把中间站留在新 Tab；调试时多次 `open` 也会堆积。`ab_h5_bypass_http.py` 登录成功后会 `close_extra_tabs` 只留 H5 主 Tab；手动清理可用 `agent-browser tab list` + `agent-browser tab close 1`。
+H5 建议在 Glass 中切换移动端视口（Browser 面板设备模拟），再打开 H5 URL。
 
 ## 执行流程
 
-### 1. 登录（每端首次）
-
-**H5 端**须先 `set device "iPhone 12"`（或 `iPhone 14`），再打开入口 URL。
-
-**CAS 登录顺序（固定，不可跳步）**：
-
-1. 等待 CAS 页 **「加载中...」消失**（`networkidle` 后 SPA 仍需 1–3s）
-2. 点击 **员工**（手机模式：`find role button click --name "员工"`；PC 模式：点 `.p-account-name` 员工卡片）
-3. 点击 **账号登录**（PC 扫码页需切换 Tab；**手机模式**选员工后通常直接进入账号表单，可跳过）
-4. `fill` 工号 / 密码 → `find role button click --name "登录"`（PC 端按钮文案可能带空格：`登 录`）
-
-```bash
-agent-browser set device "iPhone 12"
-agent-browser open "<H5入口URL>" \
-  && agent-browser wait --load networkidle \
-  && agent-browser snapshot -i
-
-# 登录成功后 screenshot 取证
-agent-browser screenshot "tests/e2e-login-h5.png"
-```
-
-使用 `--session-name` 复用登录态，同端后续用例无需重复登录。
-
-### 2. 逐条执行 E2E 用例
+### 1. 逐条执行 E2E 用例
 
 对 `e2e_cases` 或 FDH §6 中每条用例：
 
-```bash
-# 导航到目标页面（若不在当前页）
-agent-browser open "<url>" && agent-browser wait --load networkidle
+1. `browser_navigate` 到目标 URL（若不在当前页）
+2. `browser_snapshot` → `browser_click` / `browser_fill` 执行操作
+3. 再次 `browser_snapshot` 断言期望文案/元素
+4. `browser_take_screenshot` 保存 `tests/e2e-<case-id>.png`
 
-# 执行操作（click / fill / scroll 等）
-agent-browser snapshot -i
-agent-browser click @eN
+### 2. 失败时取证
 
-# 断言：snapshot 确认期望文案/元素存在
-agent-browser get text @eM
-agent-browser screenshot "tests/e2e-<case-id>.png"
-```
-
-### 3. 失败时取证
-
-- 截图当前页面
+- `browser_take_screenshot` 当前页面
 - 若为接口问题：到大禹终端查 `/data0/www/applogs/shop-points` 日志
-- 记录 Network 错误（可用 `agent-browser eval` 查页面状态）
+- 记录 snapshot 中的错误文案或缺失元素
 
 ## 产出
 

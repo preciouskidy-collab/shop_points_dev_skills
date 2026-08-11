@@ -110,6 +110,6 @@ def local_verification_lines() -> list[str]:
         "    local-stack-up → local-e2e-test（**run_workflow continue** 自动连续执行）",
         "    → **Pipeline 自动终态**（local 模式 E2E 通过后结束，不自动 commit-push）",
         ">>> 需推送代码：显式执行 playbooks/commit-push.md（非 Pipeline 默认终态）",
-        ">>> 大禹 + agent-browser：将 impact.integration_mode 改为 dayu（终态延至 release）",
+        ">>> 大禹路径：将 impact.integration_mode 改为 dayu；部署/E2E 仍用 Cursor 内置浏览器（终态延至 release）",
         ">>> 连续推进: python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>",
     ]

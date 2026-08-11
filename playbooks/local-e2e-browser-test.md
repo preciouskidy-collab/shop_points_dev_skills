@@ -16,12 +16,13 @@ commands: []
 
 | 反模式 | 后果 | 正确做法 |
 |--------|------|----------|
-| 用 Playwright / headless Chromium 跑 PC 弹窗、CAS 登录 | 与 Pipeline `e2e_browser: cursor` 不一致；用户看不到 Glass 面板；CAS 易失败 | **仅** `cursor-ide-browser` MCP |
-| 用户已开页面仍后台 Playwright「因为登录难」 | 双浏览器、状态不一致 | `browser_tabs` 绑 glass-browser → navigate → snapshot |
+| 用 Playwright / agent-browser / 本机 Chrome 跑 PC 弹窗、CAS 登录 | 与 Pipeline `e2e_browser: cursor` 不一致；占用用户 Chrome；Glass 面板不可见 | **仅** `cursor-ide-browser` MCP |
+| 用户已开页面仍后台 Playwright/agent-browser「因为登录难」 | 双浏览器、状态不一致 | `browser_tabs` 绑 glass-browser → navigate → snapshot |
+| 调用已删除的 `ab_h5_bypass_http.py` / `playwright_cas_login.py` | 脚本已移除；违反 R8.1 | `browser_navigate` → CAS 表单 `browser_fill` |
 | 只 `open_resource` 不 `browser_navigate` | 用户看不到 Browser Tab | navigate + 说明右侧 Browser 面板 |
 | 用 Cursor 对话「已上传」代替企微 `upload_confirm` | 违反 R5 / e2e-upload-collab | notify → **阻塞 wait** |
 
-**为何上次「内置浏览器没生效」**：Agent 误走 Playwright；Glass 需 **Browser Automation = Browser Tab** 且操作 **glass-browser** 视图，不能只在 agent 内部 tab 跑自动化。
+**为何上次「内置浏览器没生效」**：Agent 误走 Playwright / agent-browser（本机 Chrome）；Glass 需 **Browser Automation = Browser Tab** 且操作 **glass-browser** 视图，不能只在 agent 内部 tab 跑自动化。
 
 ## 适用时机
 
@@ -102,12 +103,16 @@ PC 登录依赖远程 agent-lego（`/api`、`/loginUser/info`），需 test01 �
 | 点击 / 输入 | `browser_click` / `browser_type` |
 | 截图验证 | `browser_take_screenshot` |
 
-## 登录
+## 登录（仅 Cursor 内置浏览器）
 
-1. 打开 H5 入口（**:8088**）→ 若跳 CAS：
-   - 员工 → 账号登录 → `test_env_app` 工号密码
-2. 或：`ab_h5_bypass_http.py`（`H5_URL` 改为 `:8088` 的 **store-pointsV2** 或 fuwujin-mall 入口）
-3. CAS 回跳依赖本机 80 CAS 反代（见排障文档 §四）
+1. `browser_tabs` → `browser_navigate` 打开 H5 入口（**:8088**）或 PC 入口
+2. 若跳 CAS（**同一 Browser Tab 内完成，禁止另开 Chrome**）：
+   - `browser_snapshot` → 点 **员工** → 点 **账号登录**
+   - `browser_fill` 填 `secrets.local.json` → `test_env_app` 工号、密码 → 点 **登录**
+3. 回跳后 `browser_snapshot` 确认进入业务页；同会话复用登录态
+4. CAS 回跳依赖本机 80 CAS 反代（见排障文档 §四）
+
+**禁止**：Playwright、`agent-browser`、`ab_h5_bypass_http.py`（已删除）、osascript 点原生 Chrome 按钮。
 
 ## 含文件上传的 E2E（企微通知 + 阻塞 wait）
 

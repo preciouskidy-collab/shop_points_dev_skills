@@ -249,18 +249,19 @@ python3 skills/req-to-dev/scripts/local_e2e_checklist.py --req-id <id> gate   # 
 
 `local-e2e-test` 阶段有两条**唯一正确路径**，违反即视为流程失败，须回滚错误操作后按 playbook 重做。
 
-### R8.1 · 必须用 Cursor 内置浏览器 MCP（禁止 Playwright / 外部 headless）
+### R8.1 · 必须用 Cursor 内置浏览器 MCP（禁止 Playwright / agent-browser / 本机 Chrome）
 
 | 场景 | 唯一路径 |
 |------|----------|
 | `impact.e2e_browser: cursor` 或 `integration_mode: local` | **`cursor-ide-browser` MCP**：`browser_navigate` → `browser_lock` → `browser_snapshot` → `browser_click` / `browser_fill` |
-| PC/H5 页面交互、CAS 登录、弹窗点确定 | 同上；登录态复用 Glass **Browser Tab** |
+| PC/H5 页面交互、**CAS 登录**、弹窗点确定 | 同上；在 Glass **Browser Tab** 内点员工→账号登录→填表，**禁止**另起 Chrome |
 | 截图取证 | `browser_take_screenshot` |
 
 **禁止**：
 
-- 写/跑 `playwright`、Selenium、独立 `chromium.launch(headless=True)` 脚本作为 `local-e2e-test` 主路径
-- 用户已打开 Glass 浏览器仍后台跑 Playwright「因为 CAS 难登」
+- 写/跑 `playwright`、`playwright_cas_login.py`（已删除）、Selenium、独立 `chromium.launch` 脚本
+- `agent-browser` CLI、`ab_h5_bypass_http.py`（已删除）、本机「Chrome for Testing」或用户 Chrome 做 E2E/CAS
+- 用户已打开 Glass 浏览器仍后台跑 Playwright/agent-browser「因为 CAS 难登」
 - 仅用 `open_resource` 打开 URL 却不走 `browser_navigate` + snapshot 驱动（用户看不到面板）
 
 **Glass 浏览器不可见时 Agent 须先**（同一回合，禁止甩锅）：
@@ -277,17 +278,18 @@ Playbook：`playbooks/local-e2e-browser-test.md` §浏览器工具、§反模式
 申诉期正负向（`E2E-PC-01c` / `E2E-PC-02`）、H5 明细账期（`APOLLO-MOCK-01` / `E2E-H5-*`）依赖 TEST 环境 **`shop-points` / `application` / `mockCurrentTime`**，须：
 
 1. **Cursor 内置浏览器**打开 Apollo Portal（见 `playbooks/apollo-mock-time.md`）
-2. 编辑 `mockCurrentTime` → 保存 → **业务开关**发布
-3. 等待 TEST 实例同步（1–3 分钟）后再继续 PC 提交 / H5 验收
+2. 编辑**独立 key** `mockCurrentTime`（非 `disbursement` JSON 内字段）→ 保存 → **业务开关**发布
+3. 等待 TEST 实例**自动**同步（1–3 分钟）后再继续 PC 提交 / H5 验收 — **发布后无需重启 shop-points**
 
 **禁止**（均无效或会导致栈损坏，**不得**作为「自愈」手段）：
 
 - `mvn spring-boot:run` 加 `-DmockCurrentTime=...` / `--mockCurrentTime=...`
 - 改 `application.yml` / 环境变量冒充 Apollo mock
-- 杀本地 `:8081` shop-points 企图用 JVM 参数「绕过申诉期」
-- 未发布 Apollo 就标 `APOLLO-MOCK-01` PASS
+- 杀本地 `:8081` / `local_stack_up` 重启 shop-points「让 mock 生效」（Apollo 发布后会**热加载**，重启无助于且干扰 E2E）
+- 未在 Portal 确认「已发布」+ 未等业务验证就标 `APOLLO-MOCK-01` PASS
+- 申诉期负向与申诉期内上传共用同一次 mock（须分阶段发布，见 `playbooks/apollo-mock-time.md` §两阶段改 mock）
 
-本地 `:8081` shop-points 仍拉 TEST Apollo；**改时间 = 改 Portal 配置**，不是改本地进程启动参数。
+本地 `:8081` shop-points 仍拉 TEST Apollo；**改时间 = 改 Portal 配置 + 等同步**，不是改本地进程启动参数，也**不是**重启进程。
 
 Playbook：`playbooks/apollo-mock-time.md`（含 Agent 浏览器操作提示）。
 

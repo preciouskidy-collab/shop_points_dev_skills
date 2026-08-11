@@ -56,7 +56,7 @@ fetch-prd → break-down → scope-eval
 
 - **唯一人工审批点**：`plan-approve`（企微 **技术方案评审**，`collaboration.phase=tech_design_review`；`approve-design` 解锁编码）
 - **条件跳过**：`frontend_scope: none` 时跳过前端交接/编码/审查/E2E
-- **浏览器工具**：默认 **Cursor 内置浏览器 MCP**（`local-e2e-test`）；agent-browser/大禹为可选路径
+- **浏览器工具**：默认 **Cursor 内置浏览器 MCP**（`local-e2e-test` / `e2e-browser-test` / `dayu-deploy`）；**禁止** Playwright、agent-browser、本机 Chrome
 
 ## 执行流程
 
@@ -185,27 +185,21 @@ python3 skills/req-to-dev/scripts/run_workflow.py continue --name <req_id>
 
 Playbook: `commit-push`。多仓 commit + push `feature/<name>`，产出 `deploy/git_push_report.md`。
 
-### Step 14：dayu-deploy（自动，AgentBrowser）
+### Step 14：dayu-deploy（自动，Cursor 内置浏览器）
 
 Playbook: `dayu-deploy` + `knowledge/dayu-platform`。
 
-```bash
-export AGENT_BROWSER_EXECUTABLE_PATH="$HOME/.agent-browser/browsers/chrome-149.0.7827.55/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
-export AGENT_BROWSER_HEADED=1
-export AGENT_BROWSER_SESSION_NAME="req-to-dev-<name>"
+1. `browser_navigate` → `https://dayu.ke.com/env/module?name=shop-points-test01`
+2. `browser_snapshot` → 登录（若需）→ 按 `deploy_modules` 逐模块构建部署
+3. 每 5 分钟刷新 snapshot 轮询至「运行中」
 
-agent-browser open "https://dayu.ke.com/env/module?name=shop-points-test01" \
-  && agent-browser wait --load networkidle \
-  && agent-browser snapshot -i
-```
-
-按 `deploy_modules` 顺序部署，刷新后「运行中」标签仍存在才算成功。产出 `deploy/dayu_deploy_report.md`。
+产出 `deploy/dayu_deploy_report.md`。
 
 ### Step 15：e2e-browser-test（自动，可跳过）
 
 Playbook: `e2e-browser-test` + `knowledge/test-env-topology`。
 
-按 FDH §6 / `api-contract.yaml` 的 `e2e_cases` 在测试环境页面执行。产出 `tests/e2e_test_report.md`。
+**仅** `cursor-ide-browser` MCP 在测试环境页面执行 FDH §6 / `e2e_cases`。产出 `tests/e2e_test_report.md`。
 
 ### Step 16：release（自动）
 
